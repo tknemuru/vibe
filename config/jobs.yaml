@@ -1,0 +1,12 @@
+defaults:
+  interval: 3h
+  limit: 5
+  freshness: Week
+  allowlist:
+    - note.com
+    - zenn.dev
+    - qiita.com
+jobs:
+  - name: claude-vibe-coding
+    query: Claude バイブコーディング
+    enabled: true
