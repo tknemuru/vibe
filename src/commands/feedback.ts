@@ -36,26 +36,32 @@ feedbackCommand
       return;
     }
 
-    console.log("\nItems awaiting feedback:\n");
-    console.log("  ID        Domain                     Title");
-    console.log("  " + "-".repeat(70));
+    console.log("\n📬 Items awaiting feedback:\n");
+    console.log("  " + "=".repeat(80));
+    console.log("  ID          Domain                      Title");
+    console.log("  " + "-".repeat(80));
 
     const displayItems = items.slice(0, limit);
     for (const item of displayItems) {
-      const id = shortenHash(item.item_hash);
-      const domain = item.domain.padEnd(25).slice(0, 25);
-      const title = item.title.length > 35 ? item.title.slice(0, 32) + "..." : item.title;
+      const id = shortenHash(item.item_hash).padEnd(10);
+      const domain = item.domain.padEnd(27).slice(0, 27);
+      const title = item.title.length > 38 ? item.title.slice(0, 35) + "..." : item.title;
       console.log(`  ${id}  ${domain}  ${title}`);
     }
 
     if (items.length > limit) {
-      console.log(`\n  ... and ${items.length - limit} more items`);
+      console.log(`\n  ... and ${items.length - limit} more item(s)`);
+      console.log(`      Run with --limit ${items.length} to see all`);
     }
 
-    console.log(`\n  Total: ${items.length} item(s) awaiting feedback`);
-    console.log("\n  Usage:");
-    console.log("    vibe feedback good <ID>...   Mark items as good");
-    console.log("    vibe feedback bad <ID>...    Mark items as bad\n");
+    console.log("  " + "-".repeat(80));
+    console.log(`\n  📊 Total: ${items.length} item(s) awaiting feedback\n`);
+    console.log("  💡 Usage:");
+    console.log("    vibe feedback good <ID>...   # Mark items as good (affects future ranking)");
+    console.log("    vibe feedback bad <ID>...    # Mark items as bad (affects future ranking)");
+    console.log("\n  Example:");
+    console.log("    vibe feedback good abc12345 def67890");
+    console.log();
   });
 
 // vibe feedback good
@@ -73,7 +79,8 @@ feedbackCommand
         // Try direct lookup
         const item = getItemByHash(shortId);
         if (!item) {
-          console.error(`  Error: Item "${shortId}" not found`);
+          console.error(`  ❌ Error: Item "${shortId}" not found`);
+          console.error(`     -> Run 'vibe feedback inbox' to see available items`);
           errorCount++;
           continue;
         }
@@ -83,24 +90,25 @@ feedbackCommand
       const item = getItemByHash(hash);
 
       if (!item) {
-        console.error(`  Error: Item "${shortId}" not found`);
+        console.error(`  ❌ Error: Item "${shortId}" not found`);
+        console.error(`     -> Run 'vibe feedback inbox' to see available items`);
         errorCount++;
         continue;
       }
 
       if (hasItemFeedback(hash)) {
-        console.log(`  Skip: "${shortId}" already has feedback`);
+        console.log(`  ⏭️  Skip: "${shortId}" already has feedback`);
         continue;
       }
 
       addFeedback(hash, 1);
-      console.log(`  Good: ${shortenHash(hash)} - ${item.title.slice(0, 40)}...`);
+      console.log(`  ✅ Good: ${shortenHash(hash)} - ${item.title.slice(0, 50)}...`);
       successCount++;
     }
 
-    console.log(`\nAdded ${successCount} good rating(s)`);
+    console.log(`\n✨ Added ${successCount} good rating(s)`);
     if (errorCount > 0) {
-      console.log(`${errorCount} error(s) occurred`);
+      console.log(`⚠️  ${errorCount} error(s) occurred - check item IDs`);
     }
   });
 
@@ -118,7 +126,8 @@ feedbackCommand
       if (!fullHash) {
         const item = getItemByHash(shortId);
         if (!item) {
-          console.error(`  Error: Item "${shortId}" not found`);
+          console.error(`  ❌ Error: Item "${shortId}" not found`);
+          console.error(`     -> Run 'vibe feedback inbox' to see available items`);
           errorCount++;
           continue;
         }
@@ -128,24 +137,25 @@ feedbackCommand
       const item = getItemByHash(hash);
 
       if (!item) {
-        console.error(`  Error: Item "${shortId}" not found`);
+        console.error(`  ❌ Error: Item "${shortId}" not found`);
+        console.error(`     -> Run 'vibe feedback inbox' to see available items`);
         errorCount++;
         continue;
       }
 
       if (hasItemFeedback(hash)) {
-        console.log(`  Skip: "${shortId}" already has feedback`);
+        console.log(`  ⏭️  Skip: "${shortId}" already has feedback`);
         continue;
       }
 
       addFeedback(hash, -1);
-      console.log(`  Bad: ${shortenHash(hash)} - ${item.title.slice(0, 40)}...`);
+      console.log(`  👎 Bad: ${shortenHash(hash)} - ${item.title.slice(0, 50)}...`);
       successCount++;
     }
 
-    console.log(`\nAdded ${successCount} bad rating(s)`);
+    console.log(`\n✨ Added ${successCount} bad rating(s)`);
     if (errorCount > 0) {
-      console.log(`${errorCount} error(s) occurred`);
+      console.log(`⚠️  ${errorCount} error(s) occurred - check item IDs`);
     }
   });
 

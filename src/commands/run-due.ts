@@ -43,7 +43,8 @@ async function runJob(
     // 1. Check quota
     const quota = checkQuota();
     if (!quota.allowed) {
-      log("WARN", `Quota limit reached (${quota.current}/${quota.limit}). Skipping search.`);
+      log("WARN", `Google Search quota limit reached (${quota.current}/${quota.limit}). Skipping search.`);
+      log("INFO", "Quota resets daily. Check quota status with 'vibe doctor'");
       return null;
     }
 
@@ -85,8 +86,10 @@ async function runJob(
   } catch (error) {
     if (error instanceof SearchError) {
       log("ERROR", `Search error for ${jobName}: ${error.message}`);
+      log("INFO", "Check your GCS_API_KEY and GCS_CX settings with: vibe doctor");
     } else {
       log("ERROR", `Error processing ${jobName}: ${error}`);
+      log("INFO", "Check configuration and logs. Run: vibe doctor");
     }
     return null;
   }
@@ -133,7 +136,9 @@ export const runDueCommand = new Command("run-due")
       for (const job of dueJobs) {
         const quota = checkQuota();
         if (!quota.allowed) {
-          log("WARN", `Stopping: quota limit reached (${quota.current}/${quota.limit})`);
+          log("WARN", `Stopping: Google Search quota limit reached (${quota.current}/${quota.limit})`);
+          log("INFO", "Quota resets daily at midnight in your timezone (APP_TZ)");
+          log("INFO", "To check quota status, run: vibe doctor");
           break;
         }
 
@@ -154,18 +159,21 @@ export const runDueCommand = new Command("run-due")
 
         try {
           await sendDigestEmail(results);
-          log("INFO", "Email sent successfully");
+          log("INFO", "✉️  Email sent successfully");
         } catch (error) {
           log("ERROR", `Failed to send email: ${error}`);
+          log("INFO", "Check SMTP settings (SMTP_USER, SMTP_PASS, MAIL_TO) with: vibe doctor");
+          log("INFO", "For Gmail, ensure you're using an App Password, not your regular password");
         }
       } else {
         log("INFO", "No items to send");
       }
 
       log("INFO", getQuotaStatus());
-      log("INFO", "Completed vibe run-due");
+      log("INFO", "✅ Completed vibe run-due");
     } catch (error) {
       log("ERROR", `Fatal error: ${error}`);
+      log("ERROR", "Run 'vibe doctor' to diagnose configuration issues");
       process.exit(1);
     }
   });

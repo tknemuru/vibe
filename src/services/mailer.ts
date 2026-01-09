@@ -57,28 +57,31 @@ function renderItemCard(item: Item, summary: Summary | null): string {
       : "";
 
     summaryHtml = `
-      <div style="margin-top:12px;padding:12px;background:#f8f9fa;border-radius:4px;">
-        <ul style="margin:0 0 8px 0;padding-left:20px;">${keyPoints}</ul>
-        <p style="margin:8px 0;"><strong>Takeaway:</strong> ${takeaway}</p>
-        <p style="margin:8px 0;"><strong>Opinion:</strong> ${opinion}</p>
+      <div style="margin-top:14px;padding:14px;background:#f8f9fa;border-left:3px solid #1a73e8;border-radius:4px;">
+        <ul style="margin:0 0 10px 0;padding-left:20px;color:#3c4043;line-height:1.6;">${keyPoints}</ul>
+        <p style="margin:10px 0;line-height:1.6;"><strong style="color:#1a73e8;">💡 Takeaway:</strong> ${takeaway}</p>
+        <p style="margin:10px 0;line-height:1.6;"><strong style="color:#1a73e8;">💭 Opinion:</strong> ${opinion}</p>
         ${nextActions}
-        <p style="margin:8px 0;font-size:12px;color:#666;">Confidence: ${confidence}</p>
+        <p style="margin:10px 0 0 0;font-size:11px;color:#5f6368;">Confidence: ${confidence}</p>
       </div>
     `;
   }
 
   return `
-    <div style="margin-bottom:24px;padding:16px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div style="flex:1;">
-          <a href="${url}" style="color:#1a73e8;text-decoration:none;font-size:16px;font-weight:500;">${title}</a>
-          <p style="margin:4px 0 0 0;font-size:12px;color:#666;">${domain}</p>
+    <div class="card" style="margin-bottom:24px;padding:18px;border:2px solid #e8eaed;border-radius:8px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+        <div style="flex:1;min-width:0;">
+          <a class="title" href="${url}" style="color:#1a73e8;text-decoration:none;font-size:16px;font-weight:500;line-height:1.4;display:block;">${title}</a>
+          <p style="margin:6px 0 0 0;font-size:12px;color:#5f6368;">${domain}</p>
         </div>
-        <div style="margin-left:12px;padding:4px 8px;background:#f0f0f0;border-radius:4px;font-family:monospace;font-size:11px;color:#666;">
-          ID: ${shortId}
+        <div class="id-box" style="margin-left:16px;padding:6px 12px;background:#e8f0fe;border:1px solid #d2e3fc;border-radius:6px;flex-shrink:0;">
+          <div style="font-family:'Courier New',Consolas,monospace;font-size:13px;font-weight:bold;color:#1967d2;letter-spacing:0.5px;user-select:all;white-space:nowrap;">
+            ${shortId}
+          </div>
+          <div style="font-size:9px;color:#5f6368;margin-top:2px;text-align:center;">ID</div>
         </div>
       </div>
-      ${item.snippet ? `<p style="margin:12px 0 0 0;color:#333;font-size:14px;">${escapeHtml(item.snippet)}</p>` : ""}
+      ${item.snippet ? `<p style="margin:8px 0 0 0;color:#3c4043;font-size:14px;line-height:1.5;">${escapeHtml(item.snippet)}</p>` : ""}
       ${summaryHtml}
     </div>
   `;
@@ -125,24 +128,47 @@ function renderEmail(results: JobResults[]): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="format-detection" content="telephone=no">
+  <style>
+    @media only screen and (max-width: 600px) {
+      .container { padding: 12px !important; }
+      .card { padding: 14px !important; margin-bottom: 16px !important; }
+      .title { font-size: 15px !important; }
+      .id-box { margin-left: 8px !important; padding: 4px 8px !important; }
+      .footer-box { padding: 10px !important; }
+    }
+  </style>
 </head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:#f5f5f5;">
-  <div style="max-width:640px;margin:0 auto;padding:24px;">
+  <div class="container" style="max-width:640px;margin:0 auto;padding:20px;">
     <div style="background:#fff;border-radius:12px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
       <header style="margin-bottom:24px;text-align:center;">
-        <h1 style="margin:0;color:#333;font-size:24px;">Vibe Digest</h1>
-        <p style="margin:8px 0 0 0;color:#666;font-size:14px;">${date} - ${totalItems} items</p>
+        <h1 style="margin:0;color:#1a73e8;font-size:26px;font-weight:600;">📬 Vibe Digest</h1>
+        <p style="margin:8px 0 0 0;color:#5f6368;font-size:14px;">${date}</p>
+        <p style="margin:4px 0 0 0;color:#5f6368;font-size:13px;">${totalItems} 件の新着記事</p>
       </header>
 
       <main>
         ${sections || "<p style='text-align:center;color:#666;'>No new items to report.</p>"}
       </main>
 
-      <footer style="margin-top:32px;padding-top:16px;border-top:1px solid #e0e0e0;text-align:center;">
-        <p style="margin:0;font-size:12px;color:#999;">
-          To rate items, run: <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">vibe feedback good|bad &lt;ID&gt;</code>
-        </p>
-        <p style="margin:8px 0 0 0;font-size:12px;color:#999;">
+      <footer style="margin-top:32px;padding-top:20px;border-top:2px solid #e8eaed;text-align:center;">
+        <div class="footer-box" style="margin-bottom:16px;padding:12px;background:#f8f9fa;border-radius:6px;">
+          <p style="margin:0 0 8px 0;font-size:13px;color:#3c4043;font-weight:500;">📝 評価方法</p>
+          <p style="margin:0 0 4px 0;font-size:12px;color:#5f6368;">
+            各記事のIDをコピーして、以下のコマンドで評価してください：
+          </p>
+          <div style="margin:8px 0;padding:8px 12px;background:#fff;border:1px solid #dadce0;border-radius:4px;font-family:'Courier New',Consolas,monospace;font-size:12px;color:#1a73e8;word-break:break-all;">
+            vibe feedback good &lt;ID&gt;
+          </div>
+          <div style="margin:8px 0;padding:8px 12px;background:#fff;border:1px solid #dadce0;border-radius:4px;font-family:'Courier New',Consolas,monospace;font-size:12px;color:#d93025;word-break:break-all;">
+            vibe feedback bad &lt;ID&gt;
+          </div>
+          <p style="margin:8px 0 0 0;font-size:11px;color:#5f6368;">
+            複数のIDを一度に評価可能（例: vibe feedback good abc123 def456）
+          </p>
+        </div>
+        <p style="margin:0;font-size:11px;color:#9aa0a6;">
           Generated by Vibe CLI
         </p>
       </footer>

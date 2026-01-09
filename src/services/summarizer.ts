@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { Item, updateItemSummary, getItemByHash } from "../db/dao.js";
+import { checkOpenAIQuota, consumeOpenAIQuota } from "../utils/quota.js";
 
 export interface Summary {
   key_points: string[];
@@ -18,19 +19,31 @@ export class SummarizerError extends Error {
 
 const SYSTEM_PROMPT = `あなたは記事要約アシスタントです。与えられたタイトル、スニペット、URLから記事の要点を抽出し、日本語で要約してください。
 
-重要なルール：
-1. 記事本文は読めないため、タイトルとスニペットのみから推測します
-2. 推測する場合は「推測: 」と明示してください
-3. 断定的な表現は避け、「〜と思われる」「〜の可能性がある」などを使用してください
+【最重要ルール】
+1. 記事本文は読めません。タイトルとスニペットのみで判断します
+2. 不明な点は「不明」と明記してください。無理に推測しないこと
+3. 推測する場合は必ず「推測: 」で始めてください
+4. 断定的な表現（「〜である」「〜だ」）は絶対に使用しないこと
+5. 推測表現を使用：「〜と思われる」「〜の可能性がある」「〜かもしれない」「〜と考えられる」
 
-出力は必ず以下のJSON形式で返してください：
+【出力形式】
+以下のJSON形式で返してください：
 {
-  "key_points": ["要点1", "要点2", "要点3"],  // 2-4個の主要ポイント
-  "takeaway": "この記事の重要な結論や学び",
-  "opinion": "この記事についての所見（推測の場合は「推測: 」で明示）",
-  "confidence": "high" または "medium" または "low",
-  "next_actions": ["アクション1", "アクション2"]  // 0-2個、省略可
-}`;
+  "key_points": ["要点1", "要点2", "要点3"],  // 2-4個。タイトル/スニペットから読み取れる主要ポイントのみ
+  "takeaway": "この記事から得られる学びや結論（推測表現を使用）",
+  "opinion": "この記事についての所見（必ず「推測: 」で始める）",
+  "confidence": "high" または "medium" または "low",  // 情報が限られているので通常は"low"または"medium"
+  "next_actions": ["具体的なアクション"]  // 1個を推奨。例：「記事全文を読んで詳細を確認する」「公式ドキュメントで仕様を確認する」
+}
+
+【例】
+良い例：
+- opinion: "推測: この記事はReactの新機能について解説していると思われる"
+- takeaway: "Reactの最新バージョンには新しいフックが追加された可能性がある"
+
+悪い例（絶対にNG）：
+- opinion: "この記事はReactの新機能について解説している"（断定形）
+- takeaway: "Reactには新しいフックがある"（推測マーカーなし）`;
 
 function getPrimaryModel(): string {
   return process.env.OPENAI_MODEL_PRIMARY || "gpt-4o-mini";
@@ -80,7 +93,7 @@ function validateSummary(data: unknown): Summary | null {
     }
   }
 
-  // Check for assertion without speculation marker in opinion
+  // Check for speculation marker in opinion (REQUIRED)
   const opinion = obj.opinion as string;
   const hasSpeculationMarker =
     opinion.includes("推測") ||
@@ -88,17 +101,29 @@ function validateSummary(data: unknown): Summary | null {
     opinion.includes("可能性") ||
     opinion.includes("かもしれない") ||
     opinion.includes("ようだ") ||
-    opinion.includes("と考えられる");
+    opinion.includes("と考えられる") ||
+    opinion.includes("不明");
 
-  // If opinion is very assertive without markers, lower confidence
-  const isAssertive =
-    opinion.includes("である") ||
-    opinion.includes("だ。") ||
-    opinion.includes("です。");
+  // Opinion MUST start with "推測:" or contain speculation markers
+  if (!opinion.startsWith("推測:") && !hasSpeculationMarker) {
+    console.warn("⚠️  Opinion lacks required speculation marker (推測:) - REJECTED");
+    return null;
+  }
 
-  if (isAssertive && !hasSpeculationMarker) {
-    // Still valid but we note this
-    console.warn("Opinion appears assertive without speculation markers");
+  // Check for problematic assertive expressions
+  const hasProblematicAssertion =
+    opinion.includes("である。") ||
+    opinion.includes("である」") ||
+    (opinion.includes("だ。") && !opinion.includes("ようだ。"));
+
+  if (hasProblematicAssertion) {
+    console.warn("⚠️  Opinion contains assertive expressions without proper hedging - REJECTED");
+    return null;
+  }
+
+  // Warn if next_actions is missing or empty
+  if (!obj.next_actions || (obj.next_actions as string[]).length === 0) {
+    console.warn("⚠️  next_actions is empty - consider adding at least one action");
   }
 
   return {
@@ -168,6 +193,15 @@ export async function summarizeItem(item: Item): Promise<Summary> {
     }
   }
 
+  // Check quota before making API calls
+  const quotaCheck = checkOpenAIQuota();
+  if (!quotaCheck.allowed) {
+    throw new SummarizerError(
+      `Daily OpenAI quota limit reached (${quotaCheck.current}/${quotaCheck.limit}). ` +
+        "Summarization skipped to prevent charges."
+    );
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new SummarizerError("OPENAI_API_KEY must be set in environment");
@@ -191,6 +225,13 @@ export async function summarizeItem(item: Item): Promise<Summary> {
     throw new SummarizerError(
       `Failed to generate summary for item ${item.item_hash} with both models`
     );
+  }
+
+  // Consume quota after successful API response
+  const consumeResult = consumeOpenAIQuota();
+  if (!consumeResult.success) {
+    // This shouldn't happen since we checked before, but handle it anyway
+    console.warn("OpenAI quota consumption failed after successful summarization");
   }
 
   // Cache the result
