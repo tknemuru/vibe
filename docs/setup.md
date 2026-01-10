@@ -170,3 +170,4 @@ vibe/
 | `vibe feedback good ID...` | Good評価 |
 | `vibe feedback bad ID...` | Bad評価 |
 | `vibe feedback stats` | フィードバック統計 |
+| `vibe test-openai` | OpenAI API接続テスト |
