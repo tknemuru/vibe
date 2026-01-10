@@ -5,6 +5,7 @@ import { doctorCommand } from "./commands/doctor.js";
 import { jobCommand } from "./commands/job.js";
 import { feedbackCommand } from "./commands/feedback.js";
 import { runDueCommand } from "./commands/run-due.js";
+import { testOpenaiCommand } from "./commands/test-openai.js";
 
 // Load environment variables
 config();
@@ -23,5 +24,6 @@ program.addCommand(doctorCommand);
 program.addCommand(jobCommand);
 program.addCommand(feedbackCommand);
 program.addCommand(runDueCommand);
+program.addCommand(testOpenaiCommand);
 
 program.parse();
