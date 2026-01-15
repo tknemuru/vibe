@@ -1,6 +1,6 @@
 {
   "name": "vibe",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "CLI for collecting and notifying about books of interest",
   "main": "dist/cli.js",
   "type": "module",
@@ -10,16 +10,21 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/cli.ts",
-    "start": "node dist/cli.js"
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@hono/node-server": "^1.19.9",
     "@types/node": "^25.0.3",
     "better-sqlite3": "^12.5.0",
     "commander": "^14.0.2",
     "dotenv": "^17.2.3",
+    "hono": "^4.11.4",
     "js-yaml": "^4.1.1",
     "nodemailer": "^7.0.12",
     "typescript": "^5.9.3"
@@ -28,6 +33,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/js-yaml": "^4.0.9",
     "@types/nodemailer": "^7.0.4",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "vitest": "^3.0.0"
   }
 }

@@ -6,6 +6,7 @@ import { jobCommand } from "./commands/job.js";
 import { runDueCommand } from "./commands/run-due.js";
 import { dbCommand } from "./commands/db.js";
 import { mailCommand } from "./commands/mail.js";
+import { createServeCommand } from "./commands/serve.js";
 
 // Load environment variables
 config();
@@ -17,7 +18,7 @@ program
   .description(
     "CLI for collecting and notifying about books of interest"
   )
-  .version("2.0.0");
+  .version("3.0.0");
 
 // Register commands
 program.addCommand(doctorCommand);
@@ -25,5 +26,6 @@ program.addCommand(jobCommand);
 program.addCommand(runDueCommand);
 program.addCommand(dbCommand);
 program.addCommand(mailCommand);
+program.addCommand(createServeCommand());
 
 program.parse();
