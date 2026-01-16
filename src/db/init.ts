@@ -34,6 +34,12 @@ export function getDb(): Database.Database {
 
     db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");
+
+    // Ver4.0 マイグレーション（既存DBの場合）
+    if (needsMigrationToV4(db)) {
+      migrateToV4(db);
+    }
+
     initSchema(db);
   }
   return db;
@@ -90,6 +96,162 @@ export function resetDatabase(): { backupPath: string } {
 }
 
 /**
+ * ログ出力用ヘルパー
+ */
+function log(level: "INFO" | "WARN" | "ERROR", message: string): void {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] [${level}] ${message}`);
+}
+
+/**
+ * Ver4.0 マイグレーションが必要かどうかを判定する
+ * @param db - データベースインスタンス
+ * @returns マイグレーションが必要な場合は true
+ */
+function needsMigrationToV4(db: Database.Database): boolean {
+  // deliveries テーブルが存在するか確認
+  const tableExists = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='deliveries'"
+    )
+    .get();
+
+  if (!tableExists) {
+    log("INFO", "[Migration] deliveries table not found, migration not needed");
+    return false;
+  }
+
+  // PRAGMA table_info で deliveries テーブルのカラム情報を取得
+  const columns = db.prepare("PRAGMA table_info(deliveries)").all() as {
+    name: string;
+  }[];
+  const hasItemHashes = columns.some((col) => col.name === "item_hashes_json");
+
+  if (hasItemHashes) {
+    log("INFO", "[Migration] item_hashes_json detected, migration required");
+    return true;
+  } else {
+    log("INFO", "[Migration] Migration skipped (item_hashes_json not found)");
+    return false;
+  }
+}
+
+/**
+ * Ver4.0 マイグレーションを実行する
+ * - deliveries テーブルから item_hashes_json を削除（テーブル再作成）
+ * - delivery_items テーブルを作成
+ * - 既存データを移行
+ * @param db - データベースインスタンス
+ */
+function migrateToV4(db: Database.Database): void {
+  log("INFO", "[Migration] Starting Ver4.0 migration...");
+
+  db.transaction(() => {
+    // Step 1: 新テーブル作成
+    db.exec(`
+      CREATE TABLE deliveries_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_name TEXT NOT NULL,
+        delivered_at TEXT NOT NULL,
+        isbn13_list_json TEXT NOT NULL
+      )
+    `);
+
+    // Step 2: データ移行（item_hashes_json は捨てる）
+    // isbn13_list_json が存在しない場合は空配列を設定
+    const hasIsbn13ListJson = (
+      db.prepare("PRAGMA table_info(deliveries)").all() as { name: string }[]
+    ).some((col) => col.name === "isbn13_list_json");
+
+    if (hasIsbn13ListJson) {
+      db.exec(`
+        INSERT INTO deliveries_new (id, job_name, delivered_at, isbn13_list_json)
+        SELECT id, job_name, delivered_at, isbn13_list_json
+        FROM deliveries
+      `);
+    } else {
+      db.exec(`
+        INSERT INTO deliveries_new (id, job_name, delivered_at, isbn13_list_json)
+        SELECT id, job_name, delivered_at, '[]'
+        FROM deliveries
+      `);
+    }
+
+    // Step 3: 旧テーブル削除
+    db.exec("DROP TABLE deliveries");
+
+    // Step 4: リネーム
+    db.exec("ALTER TABLE deliveries_new RENAME TO deliveries");
+
+    // Step 5: インデックス再作成
+    db.exec("CREATE INDEX idx_deliveries_job ON deliveries(job_name)");
+
+    // Step 6: delivery_items テーブル作成
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS delivery_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        delivery_id INTEGER NOT NULL,
+        job_name TEXT NOT NULL,
+        isbn13 TEXT NOT NULL,
+        delivered_at TEXT NOT NULL,
+        UNIQUE(job_name, isbn13),
+        FOREIGN KEY (delivery_id) REFERENCES deliveries(id)
+      )
+    `);
+
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_delivery_items_job ON delivery_items(job_name)"
+    );
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_delivery_items_isbn13 ON delivery_items(isbn13)"
+    );
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_delivery_items_delivery ON delivery_items(delivery_id)"
+    );
+
+    // Step 7: 既存の isbn13_list_json を展開して delivery_items に移行
+    const deliveries = db
+      .prepare(
+        "SELECT id, job_name, delivered_at, isbn13_list_json FROM deliveries"
+      )
+      .all() as {
+      id: number;
+      job_name: string;
+      delivered_at: string;
+      isbn13_list_json: string;
+    }[];
+
+    const insertStmt = db.prepare(`
+      INSERT OR IGNORE INTO delivery_items (delivery_id, job_name, isbn13, delivered_at)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    let totalItems = 0;
+    for (const d of deliveries) {
+      try {
+        const isbn13List = JSON.parse(d.isbn13_list_json) as string[];
+        for (const isbn13 of isbn13List) {
+          insertStmt.run(d.id, d.job_name, isbn13, d.delivered_at);
+          totalItems++;
+        }
+      } catch {
+        log(
+          "WARN",
+          `[Migration] Failed to parse isbn13_list_json for delivery ${d.id}`
+        );
+      }
+    }
+
+    log(
+      "INFO",
+      `[Migration] Migrated ${deliveries.length} deliveries, ${totalItems} delivery_items`
+    );
+  })();
+
+  log("INFO", "[Migration] Ver4.0 migration completed");
+}
+
+/**
  * データベーススキーマを初期化する
  * @param db - データベースインスタンス
  */
@@ -121,16 +283,33 @@ function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_books_last_seen ON books(last_seen_at);
 
     -- ============================================
-    -- Ver2.0 配信記録テーブル
+    -- Ver4.0 配信記録テーブル（監査ログ）
     -- ============================================
-    CREATE TABLE IF NOT EXISTS book_deliveries (
+    CREATE TABLE IF NOT EXISTS deliveries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_name TEXT NOT NULL,
       delivered_at TEXT NOT NULL,
       isbn13_list_json TEXT NOT NULL
     );
 
-    CREATE INDEX IF NOT EXISTS idx_book_deliveries_job ON book_deliveries(job_name);
+    CREATE INDEX IF NOT EXISTS idx_deliveries_job ON deliveries(job_name);
+
+    -- ============================================
+    -- Ver4.0 配信アイテムテーブル（SSOT）
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS delivery_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      delivery_id INTEGER NOT NULL,
+      job_name TEXT NOT NULL,
+      isbn13 TEXT NOT NULL,
+      delivered_at TEXT NOT NULL,
+      UNIQUE(job_name, isbn13),
+      FOREIGN KEY (delivery_id) REFERENCES deliveries(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_delivery_items_job ON delivery_items(job_name);
+    CREATE INDEX IF NOT EXISTS idx_delivery_items_isbn13 ON delivery_items(isbn13);
+    CREATE INDEX IF NOT EXISTS idx_delivery_items_delivery ON delivery_items(delivery_id);
 
     -- ============================================
     -- 共通テーブル

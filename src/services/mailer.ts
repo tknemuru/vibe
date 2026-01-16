@@ -1,5 +1,13 @@
 import nodemailer from "nodemailer";
-import { Book, getBookAuthors, getBookLinks, createBookDelivery, markBooksDelivered, createPromptWithToken } from "../db/dao.js";
+import {
+  Book,
+  getBookAuthors,
+  getBookLinks,
+  createBookDelivery,
+  markBooksDelivered,
+  recordDeliveryItems,
+  createPromptWithToken,
+} from "../db/dao.js";
 import { buildDeepResearchPrompt } from "./prompt-builder.js";
 
 export class MailerError extends Error {
@@ -215,9 +223,16 @@ export async function sendBookDigestEmail(books: Book[], jobName: string = "comb
     html,
   });
 
-  // Record deliveries and mark books as delivered
+  // Ver4.0: Record deliveries and mark books as delivered
   const isbn13List = books.map((b) => b.isbn13);
-  createBookDelivery(jobName, isbn13List);
+
+  // 1. deliveries に監査ログを記録（id を取得）
+  const delivery = createBookDelivery(jobName, isbn13List);
+
+  // 2. delivery_items に SSOT として記録
+  recordDeliveryItems(delivery.id, jobName, isbn13List);
+
+  // 3. books.last_delivered_at も更新（後方互換）
   markBooksDelivered(isbn13List);
 
   console.log(`Email sent to ${config.to} with ${books.length} books`);

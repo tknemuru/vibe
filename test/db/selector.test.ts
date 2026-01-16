@@ -3,12 +3,23 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createTestDb, insertTestBook, createTestBookInput } from "../helpers/test-db.js";
+import {
+  createTestDb,
+  insertTestBook,
+  createTestBookInput,
+  insertTestDelivery,
+  insertTestDeliveryItem,
+} from "../helpers/test-db.js";
 import { setDb } from "../../src/db/init.js";
 import {
   selectBooksForMail,
   listUndeliveredBooks,
   listRecentBooks,
+  listUndeliveredBooksForJob,
+  selectBooksForMailByJob,
+  recordDeliveryItems,
+  resetDeliveryItems,
+  getDeliveryStatsForJob,
 } from "../../src/db/dao.js";
 import Database from "better-sqlite3";
 
@@ -143,6 +154,189 @@ describe("Selector", () => {
 
       expect(result.isFallback).toBe(true);
       expect(result.books).toHaveLength(2);
+    });
+  });
+
+  // ============================================
+  // Ver4.0: ジョブ別配信履歴テスト
+  // ============================================
+
+  describe("listUndeliveredBooksForJob (Ver4.0)", () => {
+    it("特定ジョブで未配信の書籍のみを返す", () => {
+      // 書籍を追加
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083", title: "書籍A" }));
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119090", title: "書籍B" }));
+
+      // job-a で書籍Aを配信済みにする
+      const deliveryId = insertTestDelivery(testDb, "job-a", ["9784873119083"]);
+      insertTestDeliveryItem(testDb, deliveryId, "job-a", "9784873119083");
+
+      // job-a では書籍Bのみ未配信
+      const booksForJobA = listUndeliveredBooksForJob("job-a", 10);
+      expect(booksForJobA).toHaveLength(1);
+      expect(booksForJobA[0].title).toBe("書籍B");
+
+      // job-b では両方未配信
+      const booksForJobB = listUndeliveredBooksForJob("job-b", 10);
+      expect(booksForJobB).toHaveLength(2);
+    });
+
+    it("同一書籍が異なるジョブで独立して配信される", () => {
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083", title: "共通書籍" }));
+
+      // job-a で配信済み
+      const deliveryIdA = insertTestDelivery(testDb, "job-a", ["9784873119083"]);
+      insertTestDeliveryItem(testDb, deliveryIdA, "job-a", "9784873119083");
+
+      // job-a では未配信0件
+      expect(listUndeliveredBooksForJob("job-a", 10)).toHaveLength(0);
+
+      // job-b では未配信1件
+      expect(listUndeliveredBooksForJob("job-b", 10)).toHaveLength(1);
+
+      // job-b でも配信
+      const deliveryIdB = insertTestDelivery(testDb, "job-b", ["9784873119083"]);
+      insertTestDeliveryItem(testDb, deliveryIdB, "job-b", "9784873119083");
+
+      // 両方とも未配信0件
+      expect(listUndeliveredBooksForJob("job-a", 10)).toHaveLength(0);
+      expect(listUndeliveredBooksForJob("job-b", 10)).toHaveLength(0);
+    });
+
+    it("delivery_items が空なら全書籍が未配信として返る", () => {
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083" }));
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119090" }));
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119106" }));
+
+      const books = listUndeliveredBooksForJob("any-job", 10);
+      expect(books).toHaveLength(3);
+    });
+  });
+
+  describe("selectBooksForMailByJob (Ver4.0)", () => {
+    it("未配信書籍がある場合は未配信書籍を返す", () => {
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083", title: "未配信" }));
+
+      const result = selectBooksForMailByJob("job-a", 5, 3);
+
+      expect(result.isFallback).toBe(false);
+      expect(result.books).toHaveLength(1);
+      expect(result.books[0].title).toBe("未配信");
+    });
+
+    it("未配信0件時は空配列を返す（フォールバックなし）", () => {
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083" }));
+
+      // 配信済みにする
+      const deliveryId = insertTestDelivery(testDb, "job-a", ["9784873119083"]);
+      insertTestDeliveryItem(testDb, deliveryId, "job-a", "9784873119083");
+
+      const result = selectBooksForMailByJob("job-a", 5, 3);
+
+      expect(result.isFallback).toBe(false);
+      expect(result.books).toHaveLength(0);
+    });
+  });
+
+  describe("recordDeliveryItems (Ver4.0)", () => {
+    it("配信アイテムを記録できる", () => {
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083" }));
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119090" }));
+
+      // 配信記録を作成
+      const deliveryId = insertTestDelivery(testDb, "job-a", ["9784873119083", "9784873119090"]);
+
+      // delivery_items に記録
+      const count = recordDeliveryItems(deliveryId, "job-a", ["9784873119083", "9784873119090"]);
+
+      expect(count).toBe(2);
+
+      // 未配信が0件になっている
+      const books = listUndeliveredBooksForJob("job-a", 10);
+      expect(books).toHaveLength(0);
+    });
+
+    it("同一ペアは重複挿入されない（INSERT OR IGNORE）", () => {
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083" }));
+
+      const deliveryId = insertTestDelivery(testDb, "job-a", ["9784873119083"]);
+
+      // 初回
+      const count1 = recordDeliveryItems(deliveryId, "job-a", ["9784873119083"]);
+      expect(count1).toBe(1);
+
+      // 2回目（重複）
+      const count2 = recordDeliveryItems(deliveryId, "job-a", ["9784873119083"]);
+      expect(count2).toBe(0);
+    });
+  });
+
+  describe("resetDeliveryItems (Ver4.0)", () => {
+    it("ジョブ指定でそのジョブの delivery_items のみ削除", () => {
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083" }));
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119090" }));
+
+      // job-a と job-b で配信
+      const deliveryIdA = insertTestDelivery(testDb, "job-a", ["9784873119083"]);
+      insertTestDeliveryItem(testDb, deliveryIdA, "job-a", "9784873119083");
+
+      const deliveryIdB = insertTestDelivery(testDb, "job-b", ["9784873119090"]);
+      insertTestDeliveryItem(testDb, deliveryIdB, "job-b", "9784873119090");
+
+      // job-a のみリセット
+      const resetCount = resetDeliveryItems({ jobName: "job-a" });
+      expect(resetCount).toBe(1);
+
+      // job-a は未配信1件
+      expect(listUndeliveredBooksForJob("job-a", 10)).toHaveLength(2);
+
+      // job-b は未配信1件のまま
+      expect(listUndeliveredBooksForJob("job-b", 10)).toHaveLength(1);
+    });
+
+    it("オプションなしで全 delivery_items を削除", () => {
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083" }));
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119090" }));
+
+      const deliveryId = insertTestDelivery(testDb, "job-a", ["9784873119083", "9784873119090"]);
+      insertTestDeliveryItem(testDb, deliveryId, "job-a", "9784873119083");
+      insertTestDeliveryItem(testDb, deliveryId, "job-a", "9784873119090");
+
+      const resetCount = resetDeliveryItems();
+      expect(resetCount).toBe(2);
+
+      // 全て未配信に戻る
+      expect(listUndeliveredBooksForJob("job-a", 10)).toHaveLength(2);
+    });
+  });
+
+  describe("getDeliveryStatsForJob (Ver4.0)", () => {
+    it("ジョブ別の統計情報を取得できる", () => {
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083" }));
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119090" }));
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119106" }));
+
+      // 2冊を配信済みにする
+      const deliveryId = insertTestDelivery(testDb, "job-a", ["9784873119083", "9784873119090"]);
+      insertTestDeliveryItem(testDb, deliveryId, "job-a", "9784873119083");
+      insertTestDeliveryItem(testDb, deliveryId, "job-a", "9784873119090");
+
+      const stats = getDeliveryStatsForJob("job-a");
+
+      expect(stats.total).toBe(3);
+      expect(stats.delivered).toBe(2);
+      expect(stats.undelivered).toBe(1);
+    });
+
+    it("配信履歴がないジョブは全て未配信", () => {
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119083" }));
+      insertTestBook(testDb, createTestBookInput({ isbn13: "9784873119090" }));
+
+      const stats = getDeliveryStatsForJob("new-job");
+
+      expect(stats.total).toBe(2);
+      expect(stats.delivered).toBe(0);
+      expect(stats.undelivered).toBe(2);
     });
   });
 });

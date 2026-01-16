@@ -8,7 +8,8 @@ import {
   getJobState,
   updateJobState,
   upsertBook,
-  selectBooksForMail,
+  selectBooksForMailByJob,
+  getDeliveryStatsForJob,
   Book,
 } from "../db/dao.js";
 import { createGoogleBooksCollector } from "../collectors/google-books.js";
@@ -25,13 +26,23 @@ function log(level: "INFO" | "WARN" | "ERROR", message: string): void {
 
 function isJobDue(jobName: string): boolean {
   const state = getJobState(jobName);
+
   if (!state?.last_success_at) {
-    return true; // Never run before
+    log("INFO", `[Due] job=${jobName}: due=true (never run before)`);
+    return true;
   }
 
   const lastSuccess = new Date(state.last_success_at).getTime();
   const now = Date.now();
-  return now - lastSuccess >= DUE_INTERVAL_MS;
+  const elapsedMs = now - lastSuccess;
+  const isDue = elapsedMs >= DUE_INTERVAL_MS;
+
+  log(
+    "INFO",
+    `[Due] job=${jobName}, input: last_success_at=${state.last_success_at}, elapsed=${Math.round(elapsedMs / 60000)}min, threshold=${Math.round(DUE_INTERVAL_MS / 60000)}min, due=${isDue}`
+  );
+
+  return isDue;
 }
 
 /**
@@ -151,19 +162,27 @@ export const runDueCommand = new Command("run-due")
       }
 
       // Select books for mail (after all jobs completed)
-      log("INFO", `Selecting books: mail_limit=${defaults.mail_limit}, fallback_limit=${defaults.fallback_limit}`);
-      const selection = selectBooksForMail(defaults.mail_limit, defaults.fallback_limit);
+      // Ver4.0: ジョブ名 "combined" を使用して delivery_items で管理
+      const jobName = "combined";
+      log("INFO", `Selecting books: job=${jobName}, mail_limit=${defaults.mail_limit}, fallback_limit=${defaults.fallback_limit}`);
+      const selection = selectBooksForMailByJob(jobName, defaults.mail_limit, defaults.fallback_limit);
 
-      if (selection.isFallback) {
-        log("INFO", `Using fallback: ${selection.books.length} recent book(s) (no undelivered books)`);
-      } else {
-        log("INFO", `Selected ${selection.books.length} undelivered book(s)`);
-      }
+      log("INFO", `Selected ${selection.books.length} undelivered book(s)`);
 
-      // Send mail
-      if (selection.books.length > 0 || options.forceMail) {
+      // Ver4.0: 未配信0件時はメール送信しない（重複は許さない）
+      if (selection.books.length === 0 && !options.forceMail) {
+        const stats = getDeliveryStatsForJob(jobName);
+        log("INFO", `[Selector] job=${jobName}, 0 undelivered books, skipping mail`);
+        log("INFO", `[Selector] Tip: Run 'vibe mail reset --job ${jobName}' to reset delivery history`);
+        console.log("\n=== No undelivered books ===");
+        console.log(`Total books: ${stats.total}`);
+        console.log(`Delivered: ${stats.delivered}`);
+        console.log(`Undelivered: ${stats.undelivered}`);
+        console.log("\nRun 'vibe mail reset' to reset delivery status.");
+      } else if (selection.books.length > 0 || options.forceMail) {
+        // Send mail
         try {
-          await sendBookDigestEmail(selection.books, "combined");
+          await sendBookDigestEmail(selection.books, jobName);
           log("INFO", `Email sent with ${selection.books.length} book(s)`);
         } catch (error) {
           if (error instanceof MailerError) {
@@ -172,8 +191,6 @@ export const runDueCommand = new Command("run-due")
             throw error;
           }
         }
-      } else {
-        log("INFO", "No books to send");
       }
 
       log("INFO", getGoogleBooksQuotaStatus());
