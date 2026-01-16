@@ -1,5 +1,11 @@
 import { Command } from "commander";
-import { resetBooksDelivered, getBookCount, getUndeliveredBookCount } from "../db/dao.js";
+import {
+  resetBooksDelivered,
+  resetDeliveryItems,
+  getBookCount,
+  getUndeliveredBookCount,
+  getDeliveryStatsForJob,
+} from "../db/dao.js";
 import { createInterface } from "readline";
 
 async function confirm(message: string): Promise<boolean> {
@@ -98,13 +104,19 @@ mailCommand
     console.log("\nResetting delivery status...");
 
     try {
-      const resetCount = resetBooksDelivered(resetOptions);
+      // Ver4.0: delivery_items をリセット（SSOT）
+      const deliveryItemsReset = resetDeliveryItems(resetOptions);
 
-      const undeliveredAfter = getUndeliveredBookCount();
+      // 後方互換性のため books.last_delivered_at もリセット
+      const booksReset = resetBooksDelivered(resetOptions);
+
+      // ジョブ "combined" の統計を表示
+      const stats = getDeliveryStatsForJob("combined");
 
       console.log(`\nReset complete.`);
-      console.log(`  Books reset: ${resetCount}`);
-      console.log(`  Undelivered now: ${undeliveredAfter}`);
+      console.log(`  Delivery items reset: ${deliveryItemsReset}`);
+      console.log(`  Books reset: ${booksReset}`);
+      console.log(`  Undelivered now (combined job): ${stats.undelivered}`);
     } catch (error) {
       console.error(`\nError resetting delivery status: ${error}`);
       process.exit(1);
@@ -115,24 +127,36 @@ mailCommand
 mailCommand
   .command("status")
   .description("Show mail delivery status")
-  .action(() => {
+  .option("--job <name>", "Show status for a specific job (default: combined)")
+  .action((options) => {
     console.log("\n=== Mail Status ===\n");
 
     try {
+      const jobName = options.job || "combined";
+
+      // Ver4.0: delivery_items ベースの統計
+      const stats = getDeliveryStatsForJob(jobName);
+
+      // 後方互換: books.last_delivered_at ベースの統計も表示
       const totalBooks = getBookCount();
       const undeliveredBooks = getUndeliveredBookCount();
       const deliveredBooks = totalBooks - undeliveredBooks;
 
-      console.log(`Books:`);
+      console.log(`Books (global):`);
       console.log(`  Total: ${totalBooks}`);
-      console.log(`  Delivered: ${deliveredBooks}`);
+      console.log(`  Delivered (by last_delivered_at): ${deliveredBooks}`);
       console.log(`  Undelivered: ${undeliveredBooks}`);
 
-      if (undeliveredBooks === 0 && totalBooks > 0) {
-        console.log(`\nAll books have been delivered.`);
-        console.log(`Use 'vibe mail reset' to make them eligible for redelivery.`);
-      } else if (undeliveredBooks > 0) {
-        console.log(`\n${undeliveredBooks} book(s) ready for next delivery.`);
+      console.log(`\nDelivery Items (job="${jobName}"):`);
+      console.log(`  Total books: ${stats.total}`);
+      console.log(`  Delivered: ${stats.delivered}`);
+      console.log(`  Undelivered: ${stats.undelivered}`);
+
+      if (stats.undelivered === 0 && stats.total > 0) {
+        console.log(`\nAll books have been delivered for job "${jobName}".`);
+        console.log(`Use 'vibe mail reset --job ${jobName}' to make them eligible for redelivery.`);
+      } else if (stats.undelivered > 0) {
+        console.log(`\n${stats.undelivered} book(s) ready for next delivery.`);
       }
     } catch (error) {
       console.error(`\nError reading status: ${error}`);

@@ -34,15 +34,30 @@ export function initTestSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_books_last_seen ON books(last_seen_at);
 
-    -- book_deliveries テーブル
-    CREATE TABLE IF NOT EXISTS book_deliveries (
+    -- Ver4.0: deliveries テーブル（監査ログ）
+    CREATE TABLE IF NOT EXISTS deliveries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_name TEXT NOT NULL,
       delivered_at TEXT NOT NULL,
       isbn13_list_json TEXT NOT NULL
     );
 
-    CREATE INDEX IF NOT EXISTS idx_book_deliveries_job ON book_deliveries(job_name);
+    CREATE INDEX IF NOT EXISTS idx_deliveries_job ON deliveries(job_name);
+
+    -- Ver4.0: delivery_items テーブル（SSOT）
+    CREATE TABLE IF NOT EXISTS delivery_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      delivery_id INTEGER NOT NULL,
+      job_name TEXT NOT NULL,
+      isbn13 TEXT NOT NULL,
+      delivered_at TEXT NOT NULL,
+      UNIQUE(job_name, isbn13),
+      FOREIGN KEY (delivery_id) REFERENCES deliveries(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_delivery_items_job ON delivery_items(job_name);
+    CREATE INDEX IF NOT EXISTS idx_delivery_items_isbn13 ON delivery_items(isbn13);
+    CREATE INDEX IF NOT EXISTS idx_delivery_items_delivery ON delivery_items(delivery_id);
 
     -- job_state テーブル
     CREATE TABLE IF NOT EXISTS job_state (
@@ -169,4 +184,48 @@ export function insertTestBook(
     lastSeenAt,
     lastDeliveredAt
   );
+}
+
+/**
+ * 配信記録を作成する（テスト用）
+ * @param db - Databaseインスタンス
+ * @param jobName - ジョブ名
+ * @param isbn13List - 配信したISBN-13のリスト
+ * @returns 作成された配信記録のID
+ */
+export function insertTestDelivery(
+  db: Database.Database,
+  jobName: string,
+  isbn13List: string[]
+): number {
+  const now = new Date().toISOString();
+  const result = db
+    .prepare(
+      `INSERT INTO deliveries (job_name, delivered_at, isbn13_list_json)
+       VALUES (?, ?, ?)`
+    )
+    .run(jobName, now, JSON.stringify(isbn13List));
+  return result.lastInsertRowid as number;
+}
+
+/**
+ * 配信アイテムを記録する（テスト用）
+ * @param db - Databaseインスタンス
+ * @param deliveryId - 配信ID
+ * @param jobName - ジョブ名
+ * @param isbn13 - ISBN-13
+ * @param deliveredAt - 配信日時（省略時は現在時刻）
+ */
+export function insertTestDeliveryItem(
+  db: Database.Database,
+  deliveryId: number,
+  jobName: string,
+  isbn13: string,
+  deliveredAt?: string
+): void {
+  const now = deliveredAt ?? new Date().toISOString();
+  db.prepare(
+    `INSERT OR IGNORE INTO delivery_items (delivery_id, job_name, isbn13, delivered_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(deliveryId, jobName, isbn13, now);
 }

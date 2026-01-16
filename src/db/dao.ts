@@ -2,6 +2,18 @@ import { getDb } from "./init.js";
 import { randomBytes } from "crypto";
 
 // ============================================
+// ログ出力
+// ============================================
+
+/**
+ * ログ出力用ヘルパー
+ */
+function log(level: "INFO" | "WARN" | "ERROR", message: string): void {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] [${level}] ${message}`);
+}
+
+// ============================================
 // 型定義
 // ============================================
 
@@ -39,14 +51,37 @@ export interface BookInput {
 }
 
 /**
- * 書籍配信記録（Ver2.0）
+ * 書籍配信記録（Ver4.0）
  */
-export interface BookDelivery {
+export interface Delivery {
   id: number;
   job_name: string;
   delivered_at: string;
   isbn13_list_json: string;
 }
+
+/**
+ * 配信アイテム（Ver4.0 SSOT）
+ */
+export interface DeliveryItem {
+  id: number;
+  delivery_id: number;
+  job_name: string;
+  isbn13: string;
+  delivered_at: string;
+}
+
+/**
+ * 配信統計情報
+ */
+export interface DeliveryStats {
+  total: number;
+  delivered: number;
+  undelivered: number;
+}
+
+// @deprecated - use Delivery instead
+export type BookDelivery = Delivery;
 
 export interface JobState {
   job_name: string;
@@ -316,7 +351,7 @@ export function createBookDelivery(
 
   const result = db
     .prepare(
-      `INSERT INTO book_deliveries (job_name, delivered_at, isbn13_list_json)
+      `INSERT INTO deliveries (job_name, delivered_at, isbn13_list_json)
        VALUES (?, ?, ?)`
     )
     .run(jobName, now, isbn13ListJson);
@@ -346,7 +381,7 @@ export function resetBooksDelivered(options?: {
     // 特定ジョブで配信された書籍のみリセット
     const deliveries = db
       .prepare(
-        "SELECT isbn13_list_json FROM book_deliveries WHERE job_name = ?"
+        "SELECT isbn13_list_json FROM deliveries WHERE job_name = ?"
       )
       .all(options.jobName) as { isbn13_list_json: string }[];
 
@@ -385,6 +420,195 @@ export function resetBooksDelivered(options?: {
 
     return result.changes;
   }
+}
+
+// ============================================
+// Ver4.0 配信アイテム操作（SSOT）
+// ============================================
+
+/**
+ * 配信アイテムを記録する（SSOT への書き込み）
+ * @param deliveryId - 配信ID（deliveries.id）
+ * @param jobName - ジョブ名
+ * @param isbn13List - 配信した ISBN-13 のリスト
+ * @returns 挿入されたアイテム数
+ * @description
+ *   UNIQUE(job_name, isbn13) のため、同一ペアは INSERT OR IGNORE
+ */
+export function recordDeliveryItems(
+  deliveryId: number,
+  jobName: string,
+  isbn13List: string[]
+): number {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  log(
+    "INFO",
+    `[Mailer] job=${jobName}, delivery_id=${deliveryId}, inserting ${isbn13List.length} items to delivery_items`
+  );
+
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO delivery_items (delivery_id, job_name, isbn13, delivered_at)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  let insertedCount = 0;
+  const transaction = db.transaction((list: string[]) => {
+    for (const isbn13 of list) {
+      const normalized = normalizeIsbn13(isbn13);
+      if (normalized) {
+        const result = stmt.run(deliveryId, jobName, normalized, now);
+        if (result.changes > 0) {
+          insertedCount++;
+        }
+      }
+    }
+  });
+
+  transaction(isbn13List);
+
+  log(
+    "INFO",
+    `[Mailer] job=${jobName}, delivery_id=${deliveryId}, inserted ${insertedCount} delivery_item(s)`
+  );
+
+  return insertedCount;
+}
+
+/**
+ * 特定ジョブで未配信の書籍一覧を取得する
+ * @param jobName - ジョブ名
+ * @param limit - 取得件数上限
+ * @returns 未配信書籍の配列
+ * @description
+ *   delivery_items を LEFT JOIN して、該当ジョブで未配信のものを抽出
+ */
+export function listUndeliveredBooksForJob(
+  jobName: string,
+  limit: number = 100
+): Book[] {
+  const db = getDb();
+
+  log("INFO", `[Selector] job=${jobName}, query: LEFT JOIN delivery_items, limit=${limit}`);
+
+  const books = db
+    .prepare(
+      `SELECT b.* FROM books b
+       LEFT JOIN delivery_items di
+         ON di.job_name = ?
+         AND di.isbn13 = b.isbn13
+       WHERE di.isbn13 IS NULL
+       ORDER BY b.first_seen_at DESC
+       LIMIT ?`
+    )
+    .all(jobName, limit) as Book[];
+
+  // 統計情報をログ出力
+  const stats = getDeliveryStatsForJob(jobName);
+  log(
+    "INFO",
+    `[Selector] job=${jobName}, total_books=${stats.total}, delivered=${stats.delivered}, undelivered=${stats.undelivered}`
+  );
+
+  if (books.length > 0) {
+    const isbn13s = books.map((b) => b.isbn13);
+    log("INFO", `[Selector] job=${jobName}, selected_isbn13=${JSON.stringify(isbn13s)}`);
+  }
+
+  return books;
+}
+
+/**
+ * 特定ジョブ用にメール送信する書籍を選択する
+ * @param jobName - ジョブ名
+ * @param mailLimit - メール掲載上限件数
+ * @param fallbackLimit - フォールバック時の件数
+ * @returns 書籍配列とフォールバックフラグ
+ */
+export function selectBooksForMailByJob(
+  jobName: string,
+  mailLimit: number,
+  fallbackLimit: number
+): { books: Book[]; isFallback: boolean } {
+  log(
+    "INFO",
+    `[Selector] selectBooksForMailByJob: job=${jobName}, mailLimit=${mailLimit}, fallbackLimit=${fallbackLimit}`
+  );
+
+  const undelivered = listUndeliveredBooksForJob(jobName, mailLimit);
+
+  if (undelivered.length > 0) {
+    log("INFO", `[Selector] job=${jobName}, returning ${undelivered.length} undelivered book(s)`);
+    return { books: undelivered, isFallback: false };
+  }
+
+  // Ver4.0: 未配信0件時はフォールバックせず空を返す（重複は許さない）
+  log("INFO", `[Selector] job=${jobName}, 0 undelivered books available`);
+  return { books: [], isFallback: false };
+}
+
+/**
+ * 配信履歴をリセットする（delivery_items）
+ * @param options - リセットオプション
+ * @returns リセットされた件数
+ */
+export function resetDeliveryItems(options?: {
+  jobName?: string;
+  sinceDays?: number;
+}): number {
+  const db = getDb();
+
+  if (options?.jobName) {
+    log("INFO", `[Reset] job=${options.jobName}, deleting from delivery_items WHERE job_name='${options.jobName}'`);
+    const result = db
+      .prepare("DELETE FROM delivery_items WHERE job_name = ?")
+      .run(options.jobName);
+    log("INFO", `[Reset] job=${options.jobName}, deleted ${result.changes} delivery_item(s)`);
+    return result.changes;
+  } else if (options?.sinceDays) {
+    log("INFO", `[Reset] Resetting delivery_items within ${options.sinceDays} days`);
+    const result = db
+      .prepare(
+        `DELETE FROM delivery_items
+         WHERE delivered_at >= datetime('now', ?)`
+      )
+      .run(`-${options.sinceDays} days`);
+    log("INFO", `[Reset] Deleted ${result.changes} delivery_item(s)`);
+    return result.changes;
+  } else {
+    log("INFO", "[Reset] Resetting ALL delivery_items");
+    const result = db.prepare("DELETE FROM delivery_items").run();
+    log("INFO", `[Reset] Deleted ${result.changes} delivery_item(s)`);
+    return result.changes;
+  }
+}
+
+/**
+ * ジョブ別の配信統計情報を取得する
+ * @param jobName - ジョブ名
+ * @returns 統計情報
+ */
+export function getDeliveryStatsForJob(jobName: string): DeliveryStats {
+  const db = getDb();
+
+  const totalRow = db.prepare("SELECT COUNT(*) as count FROM books").get() as {
+    count: number;
+  };
+
+  const deliveredRow = db
+    .prepare(
+      `SELECT COUNT(DISTINCT di.isbn13) as count
+       FROM delivery_items di
+       WHERE di.job_name = ?`
+    )
+    .get(jobName) as { count: number };
+
+  return {
+    total: totalRow.count,
+    delivered: deliveredRow.count,
+    undelivered: totalRow.count - deliveredRow.count,
+  };
 }
 
 /**
