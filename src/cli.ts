@@ -14,7 +14,7 @@ config();
 const program = new Command();
 
 program
-  .name("vibe")
+  .name("dre")
   .description(
     "CLI for collecting and notifying about books of interest"
   )
