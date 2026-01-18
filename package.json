@@ -1,11 +1,11 @@
 {
-  "name": "vibe",
+  "name": "dre",
   "version": "3.0.0",
   "description": "CLI for collecting and notifying about books of interest",
   "main": "dist/cli.js",
   "type": "module",
   "bin": {
-    "vibe": "./dist/cli.js"
+    "dre": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
