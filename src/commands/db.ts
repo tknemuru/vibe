@@ -20,7 +20,7 @@ async function confirm(message: string): Promise<boolean> {
 export const dbCommand = new Command("db")
   .description("Database management commands");
 
-// vibe db reset
+// dre db reset
 dbCommand
   .command("reset")
   .description("Reset the database (backup and recreate)")
@@ -53,7 +53,7 @@ dbCommand
     }
   });
 
-// vibe db info
+// dre db info
 dbCommand
   .command("info")
   .description("Show database information")

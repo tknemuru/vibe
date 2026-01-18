@@ -25,7 +25,7 @@ function handleError(error: unknown): void {
 export const jobCommand = new Command("job")
   .description("Manage book collection jobs");
 
-// vibe job ls
+// dre job ls
 jobCommand
   .command("ls")
   .description("List all jobs")
@@ -64,7 +64,7 @@ jobCommand
     }
   });
 
-// vibe job add
+// dre job add
 jobCommand
   .command("add")
   .description("Add a new job")
@@ -109,7 +109,7 @@ jobCommand
     }
   });
 
-// vibe job update
+// dre job update
 jobCommand
   .command("update <name>")
   .description("Update an existing job")
@@ -148,7 +148,7 @@ jobCommand
     }
   });
 
-// vibe job rm
+// dre job rm
 jobCommand
   .command("rm <name>")
   .description("Remove a job")
@@ -164,7 +164,7 @@ jobCommand
     }
   });
 
-// vibe job enable
+// dre job enable
 jobCommand
   .command("enable <name>")
   .description("Enable a job")
@@ -191,7 +191,7 @@ jobCommand
     }
   });
 
-// vibe job disable
+// dre job disable
 jobCommand
   .command("disable <name>")
   .description("Disable a job")
@@ -218,7 +218,7 @@ jobCommand
     }
   });
 
-// vibe job show
+// dre job show
 jobCommand
   .command("show <name>")
   .description("Show details of a job")

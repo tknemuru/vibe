@@ -114,7 +114,7 @@ export const runDueCommand = new Command("run-due")
   .option("--force", "Run all enabled jobs regardless of due status")
   .option("--force-mail", "Force send email even with 0 books (for testing)")
   .action(async (options) => {
-    log("INFO", "Starting vibe run-due (Ver2.0 - Book Collection Mode)");
+    log("INFO", "Starting dre run-due (Ver2.0 - Book Collection Mode)");
     log("INFO", getGoogleBooksQuotaStatus());
 
     try {
@@ -173,12 +173,12 @@ export const runDueCommand = new Command("run-due")
       if (selection.books.length === 0 && !options.forceMail) {
         const stats = getDeliveryStatsForJob(jobName);
         log("INFO", `[Selector] job=${jobName}, 0 undelivered books, skipping mail`);
-        log("INFO", `[Selector] Tip: Run 'vibe mail reset --job ${jobName}' to reset delivery history`);
+        log("INFO", `[Selector] Tip: Run 'dre mail reset --job ${jobName}' to reset delivery history`);
         console.log("\n=== No undelivered books ===");
         console.log(`Total books: ${stats.total}`);
         console.log(`Delivered: ${stats.delivered}`);
         console.log(`Undelivered: ${stats.undelivered}`);
-        console.log("\nRun 'vibe mail reset' to reset delivery status.");
+        console.log("\nRun 'dre mail reset' to reset delivery status.");
       } else if (selection.books.length > 0 || options.forceMail) {
         // Send mail
         try {
@@ -194,10 +194,10 @@ export const runDueCommand = new Command("run-due")
       }
 
       log("INFO", getGoogleBooksQuotaStatus());
-      log("INFO", "Completed vibe run-due");
+      log("INFO", "Completed dre run-due");
     } catch (error) {
       log("ERROR", `Fatal error: ${error}`);
-      log("ERROR", "Run 'vibe doctor' to diagnose configuration issues");
+      log("ERROR", "Run 'dre doctor' to diagnose configuration issues");
       process.exit(1);
     }
   });

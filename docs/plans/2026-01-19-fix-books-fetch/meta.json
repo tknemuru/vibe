@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "topic": "2026-01-19-fix-books-fetch",
+  "title": "Fix Books Fetch書籍情報取得件数改善",
+  "status": "NEEDS_CHANGES",
+  "paths": {
+    "instruction": "instruction.md",
+    "plan": "plan.md",
+    "review": "review.md"
+  },
+  "hashes": {
+    "planSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "reviewSha256": ""
+  },
+  "timestamps": {
+    "createdAt": "2026-01-19T01:42:17+09:00",
+    "updatedAt": "2026-01-19T01:47:30+09:00"
+  }
+}

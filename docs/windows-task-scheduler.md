@@ -1,24 +1,24 @@
 # Windows タスクスケジューラ設定ガイド
 
-Vibeを定期的に自動実行するためのWindowsタスクスケジューラの設定方法です。
+DREを定期的に自動実行するためのWindowsタスクスケジューラの設定方法です。
 
 ## 前提条件
 
 - Windows 11 + WSL2 環境
-- Vibeが正常にセットアップされていること（`vibe doctor` でOKになること）
+- DREが正常にセットアップされていること（`dre doctor` でOKになること）
 
 ## 1. バッチファイルの作成
 
-`C:\Users\<username>\vibe-run.bat` を作成:
+`C:\Users\<username>\dre-run.bat` を作成:
 
 ```batch
 @echo off
-wsl -d Ubuntu -e bash -c "cd /home/<wsl-username>/projects/vibe && /home/<wsl-username>/.nvm/versions/node/v20.x.x/bin/node dist/cli.js run-due"
+wsl -d Ubuntu -e bash -c "cd /home/<wsl-username>/projects/dre && /home/<wsl-username>/.nvm/versions/node/v20.x.x/bin/node dist/cli.js run-due"
 ```
 
 **注意**: 以下を環境に合わせて変更してください:
 - `Ubuntu` → WSLディストリビューション名（`wsl -l` で確認）
-- `/home/<wsl-username>/projects/vibe` → Vibeのインストールパス
+- `/home/<wsl-username>/projects/dre` → DREのインストールパス
 - Node.jsのパス（`which node` で確認）
 
 ## 2. タスクスケジューラの設定
@@ -34,8 +34,8 @@ wsl -d Ubuntu -e bash -c "cd /home/<wsl-username>/projects/vibe && /home/<wsl-us
 
 ### 2.3 全般タブ
 
-- **名前**: `Vibe Run Due`
-- **説明**: Vibeの定期実行
+- **名前**: `DRE Run Due`
+- **説明**: DREの定期実行
 - **ユーザーがログオンしているかどうかにかかわらず実行する**: チェック
 - **最上位の特権で実行する**: チェックしない
 
@@ -56,7 +56,7 @@ wsl -d Ubuntu -e bash -c "cd /home/<wsl-username>/projects/vibe && /home/<wsl-us
 「新規...」をクリック:
 
 - **操作**: プログラムの開始
-- **プログラム/スクリプト**: `C:\Users\<username>\vibe-run.bat`
+- **プログラム/スクリプト**: `C:\Users\<username>\dre-run.bat`
 - **引数**: （空欄）
 - **開始**: （空欄）
 
@@ -83,7 +83,7 @@ WSL内でログを確認:
 
 ```bash
 # 最新の実行状態を確認
-vibe run-due --dry-run
+dre run-due --dry-run
 ```
 
 ## トラブルシューティング
@@ -116,9 +116,9 @@ vibe run-due --dry-run
 
 ```batch
 @echo off
-set LOGFILE=C:\Users\<username>\vibe-logs\%date:~0,4%%date:~5,2%%date:~8,2%.log
-if not exist C:\Users\<username>\vibe-logs mkdir C:\Users\<username>\vibe-logs
-echo [%date% %time%] Starting vibe run-due >> %LOGFILE%
-wsl -d Ubuntu -e bash -c "cd /home/<wsl-username>/projects/vibe && /home/<wsl-username>/.nvm/versions/node/v20.x.x/bin/node dist/cli.js run-due" >> %LOGFILE% 2>&1
+set LOGFILE=C:\Users\<username>\dre-logs\%date:~0,4%%date:~5,2%%date:~8,2%.log
+if not exist C:\Users\<username>\dre-logs mkdir C:\Users\<username>\dre-logs
+echo [%date% %time%] Starting dre run-due >> %LOGFILE%
+wsl -d Ubuntu -e bash -c "cd /home/<wsl-username>/projects/dre && /home/<wsl-username>/.nvm/versions/node/v20.x.x/bin/node dist/cli.js run-due" >> %LOGFILE% 2>&1
 echo [%date% %time%] Completed >> %LOGFILE%
 ```

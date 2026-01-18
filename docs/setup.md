@@ -1,8 +1,8 @@
-# Vibe Ver2.0 セットアップガイド
+# DRE Ver2.0 セットアップガイド
 
 ## 概要
 
-Vibeは書籍収集 + DeepResearch支援メールシステムです。
+DREは書籍収集 + DeepResearch支援メールシステムです。
 Google Books APIで書籍を収集し、DeepResearch用プロンプト付きメールを配信します。
 
 ## 必要なもの
@@ -16,7 +16,7 @@ Google Books APIで書籍を収集し、DeepResearch用プロンプト付きメ�
 ```bash
 # リポジトリのクローン
 git clone <repository-url>
-cd vibe
+cd dre
 
 # 依存パッケージのインストール
 npm install
@@ -45,7 +45,7 @@ npm link
 1. [Googleアカウント設定](https://myaccount.google.com/) にアクセス
 2. 「セキュリティ」→「2段階認証プロセス」を有効化
 3. 「アプリパスワード」を選択
-4. アプリ: 「メール」、デバイス: 「その他」で「Vibe」と入力
+4. アプリ: 「メール」、デバイス: 「その他」で「DRE」と入力
 5. 生成された16文字のパスワードをコピー
 
 ## 4. 環境変数の設定
@@ -78,7 +78,7 @@ DAILY_BOOKS_API_LIMIT=100
 
 ```bash
 # 設定診断
-vibe doctor
+dre doctor
 ```
 
 すべてOKになることを確認してください。
@@ -89,17 +89,17 @@ vibe doctor
 
 ```bash
 # ジョブ一覧
-vibe job ls
+dre job ls
 ```
 
 ### 6.2 ジョブの追加
 
 ```bash
 # 単一クエリのジョブ
-vibe job add -n ai-books -q "AI プログラミング"
+dre job add -n ai-books -q "AI プログラミング"
 
 # 複数クエリのジョブ
-vibe job add -n tech-books -q "Claude AI" -q "プログラミング 入門"
+dre job add -n tech-books -q "Claude AI" -q "プログラミング 入門"
 ```
 
 ### 6.3 config/jobs.yaml の直接編集
@@ -131,13 +131,13 @@ jobs:
 
 ```bash
 # dry-run（実際には実行しない）
-vibe run-due --dry-run
+dre run-due --dry-run
 
 # 実行（メール送信含む）
-vibe run-due
+dre run-due
 
 # 強制実行（due判定をスキップ）
-vibe run-due --force
+dre run-due --force
 ```
 
 ## 8. データ管理
@@ -145,36 +145,36 @@ vibe run-due --force
 ### 8.1 配信ステータスの確認
 
 ```bash
-vibe mail status
+dre mail status
 ```
 
 ### 8.2 配信ステータスのリセット
 
 ```bash
 # すべてリセット
-vibe mail reset --yes
+dre mail reset --yes
 
 # 過去7日間のみリセット
-vibe mail reset --since 7d --yes
+dre mail reset --since 7d --yes
 
 # 特定ジョブのみリセット
-vibe mail reset --job ai-books --yes
+dre mail reset --job ai-books --yes
 ```
 
 ### 8.3 データベースのリセット
 
 ```bash
 # バックアップを取ってリセット
-vibe db reset --yes
+dre db reset --yes
 
 # データベース情報の確認
-vibe db info
+dre db info
 ```
 
 ## ディレクトリ構成
 
 ```
-vibe/
+dre/
 ├── config/
 │   └── jobs.yaml      # ジョブ設定
 ├── data/
@@ -188,20 +188,20 @@ vibe/
 
 | コマンド | 説明 |
 |---------|------|
-| `vibe doctor` | 設定診断 |
-| `vibe job ls` | ジョブ一覧 |
-| `vibe job add -n NAME -q QUERY` | ジョブ追加 |
-| `vibe job show NAME` | ジョブ詳細 |
-| `vibe job enable NAME` | ジョブ有効化 |
-| `vibe job disable NAME` | ジョブ無効化 |
-| `vibe job rm NAME` | ジョブ削除 |
-| `vibe run-due` | dueジョブを実行 |
-| `vibe run-due --dry-run` | 実行せずに確認 |
-| `vibe run-due --force` | 強制実行 |
-| `vibe db info` | DB情報表示 |
-| `vibe db reset` | DBリセット |
-| `vibe mail status` | 配信ステータス |
-| `vibe mail reset` | 配信リセット |
+| `dre doctor` | 設定診断 |
+| `dre job ls` | ジョブ一覧 |
+| `dre job add -n NAME -q QUERY` | ジョブ追加 |
+| `dre job show NAME` | ジョブ詳細 |
+| `dre job enable NAME` | ジョブ有効化 |
+| `dre job disable NAME` | ジョブ無効化 |
+| `dre job rm NAME` | ジョブ削除 |
+| `dre run-due` | dueジョブを実行 |
+| `dre run-due --dry-run` | 実行せずに確認 |
+| `dre run-due --force` | 強制実行 |
+| `dre db info` | DB情報表示 |
+| `dre db reset` | DBリセット |
+| `dre mail status` | 配信ステータス |
+| `dre mail reset` | 配信リセット |
 
 ## トラブルシューティング
 
@@ -218,7 +218,7 @@ vibe/
 
 1. `SMTP_PASS` がアプリパスワードであることを確認
 2. `MAIL_TO` が正しいメールアドレスであることを確認
-3. `vibe doctor` で設定を確認
+3. `dre doctor` で設定を確認
 
 ### 収集される書籍が少ない
 

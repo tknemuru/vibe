@@ -30,7 +30,7 @@ export function renderCopyPage(promptText: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Copy Prompt - Vibe</title>
+  <title>Copy Prompt - DRE</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -122,7 +122,7 @@ export function renderCopyPage(promptText: string): string {
     <h1>📋 Deep Research プロンプト</h1>
     <div class="prompt-text" id="prompt">${escapeHtml(promptText)}</div>
     <button class="copy-btn" id="copyBtn">コピー</button>
-    <p class="footer">Vibe CLI v3.0</p>
+    <p class="footer">DRE CLI v3.0</p>
   </div>
   <div class="toast" id="toast">コピーしました ✓</div>
   <script>
@@ -165,7 +165,7 @@ export function renderErrorPage(statusCode: number, message: string): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} - Vibe</title>
+  <title>${title} - DRE</title>
   <style>
     * { box-sizing: border-box; }
     body {

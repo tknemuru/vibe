@@ -2,7 +2,7 @@
  * Honoサーバーアプリケーション
  * @description
  *   Copyページを提供するHTTPサーバー。
- *   vibe serve コマンドから起動される。
+ *   dre serve コマンドから起動される。
  */
 
 import { Hono } from "hono";
@@ -19,7 +19,7 @@ export function createApp(): Hono {
   app.get("/", (c) => {
     return c.json({
       status: "ok",
-      name: "Vibe Copy Server",
+      name: "DRE Copy Server",
       version: "3.0.0",
     });
   });

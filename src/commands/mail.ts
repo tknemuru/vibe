@@ -48,7 +48,7 @@ function parseDurationToDays(duration: string): number | null {
 export const mailCommand = new Command("mail")
   .description("Mail delivery management commands");
 
-// vibe mail reset
+// dre mail reset
 mailCommand
   .command("reset")
   .description("Reset delivery status for books (make them undelivered)")
@@ -123,7 +123,7 @@ mailCommand
     }
   });
 
-// vibe mail status
+// dre mail status
 mailCommand
   .command("status")
   .description("Show mail delivery status")
@@ -154,7 +154,7 @@ mailCommand
 
       if (stats.undelivered === 0 && stats.total > 0) {
         console.log(`\nAll books have been delivered for job "${jobName}".`);
-        console.log(`Use 'vibe mail reset --job ${jobName}' to make them eligible for redelivery.`);
+        console.log(`Use 'dre mail reset --job ${jobName}' to make them eligible for redelivery.`);
       } else if (stats.undelivered > 0) {
         console.log(`\n${stats.undelivered} book(s) ready for next delivery.`);
       }

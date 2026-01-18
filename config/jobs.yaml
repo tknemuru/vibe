@@ -7,6 +7,6 @@ defaults:
     - zenn.dev
     - qiita.com
 jobs:
-  - name: claude-vibe-coding
+  - name: claude-dre-coding
     query: Claude バイブコーディング
     enabled: true

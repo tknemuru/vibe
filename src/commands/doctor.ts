@@ -82,7 +82,7 @@ function checkFile(path: string, description: string): { ok: boolean; path: stri
 export const doctorCommand = new Command("doctor")
   .description("Check configuration and environment setup")
   .action(() => {
-    console.log("Vibe Configuration Diagnostic (Ver2.0)\n");
+    console.log("DRE Configuration Diagnostic (Ver2.0)\n");
     console.log("=".repeat(50));
 
     let hasErrors = false;
@@ -160,7 +160,7 @@ export const doctorCommand = new Command("doctor")
     console.log("\n" + "=".repeat(50));
     if (hasErrors) {
       console.log("\nStatus: INCOMPLETE");
-      console.log("Please fix the issues above before running vibe.");
+      console.log("Please fix the issues above before running dre.");
       process.exit(1);
     } else {
       console.log("\nStatus: OK");

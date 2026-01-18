@@ -88,7 +88,7 @@ describe("Prompt Route", () => {
       expect(res.status).toBe(200);
       const json = await res.json();
       expect(json.status).toBe("ok");
-      expect(json.name).toBe("Vibe Copy Server");
+      expect(json.name).toBe("DRE Copy Server");
       expect(json.version).toBe("3.0.0");
     });
   });

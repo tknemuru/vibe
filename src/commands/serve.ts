@@ -1,5 +1,5 @@
 /**
- * vibe serve コマンド
+ * dre serve コマンド
  * @description
  *   HTTPサーバーを起動してCopyページを提供する。
  */
@@ -28,7 +28,7 @@ export function createServeCommand(): Command {
 
       const app = createApp();
 
-      console.log(`Starting Vibe Copy Server...`);
+      console.log(`Starting DRE Copy Server...`);
       console.log(`  Host: ${host}`);
       console.log(`  Port: ${port}`);
       console.log(`  URL: http://${host === "0.0.0.0" ? "localhost" : host}:${port}`);
