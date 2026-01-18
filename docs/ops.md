@@ -1,14 +1,14 @@
-# Vibe Ver2.0 運用ガイド
+# DRE Ver2.0 運用ガイド
 
 ## 日常運用
 
 ### 定期実行
 
-Vibeは3時間ごとにジョブを実行するよう設計されています。
+DREは3時間ごとにジョブを実行するよう設計されています。
 
 ```bash
 # cron設定例（毎時実行、内部で3時間判定）
-0 * * * * cd /path/to/vibe && /usr/bin/node dist/cli.js run-due >> /var/log/vibe.log 2>&1
+0 * * * * cd /path/to/dre && /usr/bin/node dist/cli.js run-due >> /var/log/dre.log 2>&1
 ```
 
 Windows Task Schedulerの場合は `docs/windows-task-scheduler.md` を参照してください。
@@ -17,13 +17,13 @@ Windows Task Schedulerの場合は `docs/windows-task-scheduler.md` を参照し
 
 ```bash
 # 配信ステータス
-vibe mail status
+dre mail status
 
 # DB情報
-vibe db info
+dre db info
 
 # 設定診断
-vibe doctor
+dre doctor
 ```
 
 ## パイプライン概要
@@ -52,26 +52,26 @@ vibe doctor
 
 ```bash
 # すべての書籍を未配信にリセット
-vibe mail reset --yes
+dre mail reset --yes
 
 # 過去7日間に配信した書籍のみリセット
-vibe mail reset --since 7d --yes
+dre mail reset --since 7d --yes
 
 # 過去30日間
-vibe mail reset --since 30d --yes
+dre mail reset --since 30d --yes
 
 # 過去1週間
-vibe mail reset --since 1w --yes
+dre mail reset --since 1w --yes
 
 # 特定ジョブで配信した書籍のみ
-vibe mail reset --job ai-books --yes
+dre mail reset --job ai-books --yes
 ```
 
 ### 確認
 
 ```bash
 # リセット前後のステータス確認
-vibe mail status
+dre mail status
 ```
 
 ## データベース管理
@@ -89,10 +89,10 @@ cp data/app.db data/app.db.manual.$(date +%Y%m%d)
 
 ```bash
 # 確認プロンプト付き
-vibe db reset
+dre db reset
 
 # 確認スキップ
-vibe db reset --yes
+dre db reset --yes
 ```
 
 リセット後、バックアップファイルが `data/app.db.bak.<timestamp>` として保存されます。
@@ -113,24 +113,24 @@ cp data/app.db.bak.2024-01-15T10-30-00 data/app.db
 
 ```bash
 # ジョブを無効化
-vibe job disable ai-books
+dre job disable ai-books
 
 # 確認
-vibe job ls
+dre job ls
 ```
 
 ### 再開
 
 ```bash
 # ジョブを有効化
-vibe job enable ai-books
+dre job enable ai-books
 ```
 
 ### クエリの更新
 
 ```bash
 # 既存クエリを置き換え
-vibe job update ai-books -q "新しいクエリ1" -q "新しいクエリ2"
+dre job update ai-books -q "新しいクエリ1" -q "新しいクエリ2"
 
 # または config/jobs.yaml を直接編集
 ```
@@ -141,7 +141,7 @@ vibe job update ai-books -q "新しいクエリ1" -q "新しいクエリ2"
 
 ```bash
 # 直接実行でログ確認
-vibe run-due 2>&1 | tee vibe-debug.log
+dre run-due 2>&1 | tee dre-debug.log
 ```
 
 ### よくある問題
@@ -150,13 +150,13 @@ vibe run-due 2>&1 | tee vibe-debug.log
 
 1. クエリが適切か確認
 2. Google Books APIキーが有効か確認
-3. クォータ状況を確認: `vibe doctor`
+3. クォータ状況を確認: `dre doctor`
 
 #### メールが送信されない
 
-1. SMTP設定を確認: `vibe doctor`
-2. 未配信書籍があるか確認: `vibe mail status`
-3. 強制送信でテスト: `vibe run-due --force`
+1. SMTP設定を確認: `dre doctor`
+2. 未配信書籍があるか確認: `dre mail status`
+3. 強制送信でテスト: `dre run-due --force`
 
 #### 同じ書籍が何度も配信される
 
@@ -164,17 +164,17 @@ DBが正しく更新されていない可能性があります。
 
 ```bash
 # DBの状態確認
-vibe db info
+dre db info
 
 # 必要に応じてDBリセット
-vibe db reset --yes
+dre db reset --yes
 ```
 
 ## 監視
 
 ### 正常動作の確認
 
-1. `vibe mail status` で定期的に配信数を確認
+1. `dre mail status` で定期的に配信数を確認
 2. メール受信を確認
 3. ログでエラーがないか確認
 
@@ -182,9 +182,73 @@ vibe db reset --yes
 
 ```bash
 #!/bin/bash
-# check-vibe.sh
-UNDELIVERED=$(vibe mail status 2>/dev/null | grep "Undelivered:" | awk '{print $2}')
+# check-dre.sh
+UNDELIVERED=$(dre mail status 2>/dev/null | grep "Undelivered:" | awk '{print $2}')
 if [ "$UNDELIVERED" = "0" ]; then
   echo "Warning: No undelivered books"
 fi
+```
+
+## systemd サービス
+
+### 概要
+
+- **使用するサービス名**: `dre-serve.service` のみ
+- **重要**: `vibe-serve.service` は作成・維持しない（旧名称は非対応）
+
+### 新規作成手順
+
+1. サービスファイルの作成
+
+```bash
+sudo cp /path/to/dre/systemd/dre-serve.service /etc/systemd/system/
+```
+
+2. ExecStart のパスを環境に合わせて修正
+
+```bash
+sudo vim /etc/systemd/system/dre-serve.service
+# ExecStart=/path/to/node /path/to/dre/dist/cli.js serve
+```
+
+3. サービスの有効化と開始
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable dre-serve.service
+sudo systemctl start dre-serve.service
+```
+
+4. 状態確認
+
+```bash
+sudo systemctl status dre-serve.service
+```
+
+### 旧サービスからの移行手順
+
+`vibe-serve.service` から移行する場合:
+
+1. 旧サービスの停止・無効化
+
+```bash
+sudo systemctl stop vibe-serve.service
+sudo systemctl disable vibe-serve.service
+sudo rm /etc/systemd/system/vibe-serve.service
+sudo systemctl daemon-reload
+```
+
+2. 新サービスの設定（上記「新規作成手順」の 1〜4 を実行）
+
+### サービス管理
+
+```bash
+# 再起動
+sudo systemctl restart dre-serve.service
+
+# ログ確認
+sudo journalctl -u dre-serve.service -f
+
+# 停止
+sudo systemctl stop dre-serve.service
 ```
