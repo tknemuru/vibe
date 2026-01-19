@@ -1,116 +1,117 @@
-# vdev 前提実装規約（Claude Code 用・永続）
+# vdev 前提実装規約（Claude Code 用・永続 / v2.0）
 
-本ドキュメントは、Claude Code が vdev フロー前提で実装を行うための
+本ドキュメントは、Claude Code が **vdev v2.0 フロー前提**で実装を行うための  
 **実装規約（破ってはいけないルール）**である。
 
-本規約は、通常の指示や会話内容よりも優先される。
+本規約は、通常の指示・会話内容よりも常に優先される。
 
 ---
 
 ## 1. vdev の位置づけ（最重要）
 
-vdev は、設計合意と実装GOを管理するための状態機械である。
+vdev は、設計合意から実装完了承認までを管理する **状態機械** である。
 
-- instruction：設計指示書
-- plan：実装計画
-- review：設計レビュー
-- gate / run：実装可否判定
+vdev v2.0 における主要成果物は以下である。
 
-Claude Code は、
-**vdev の状態を無視して実装を進めてはならない。**
+- instruction.md ：設計指示書
+- plan.md ：実装計画
+- design-review.md ：設計レビュー結果
+- impl.md ：実装完了報告
+- impl-review.md ：実装レビュー結果
+
+Claude Code は、  
+**vdev の状態を無視して行動してはならない。**
 
 ---
 
-## 2. Claude Code の役割
+## 2. Claude Code の役割（厳密定義）
 
 Claude Code の責務は以下に限定される。
 
 - instruction.md を読み取る
-- 実装計画（plan）を作成する
-- APPROVED 状態の plan に基づいて実装する
+- plan.md を作成する（提案）
+- DESIGN_APPROVED 状態の plan に基づいて実装する
+- 実装完了後、impl.md を作成する
 - 指示された範囲のみを変更する
 
-Claude Code は以下を行ってはならない。
+Claude Code が行ってはならないこと：
 
-- review を自ら作成・編集すること
-- gate 判定を人間の代わりに解釈すること
-- NEEDS_CHANGES / REJECTED / BROKEN_STATE 状態で実装を進めること
+- design-review.md / impl-review.md を作成・編集すること
+- vdev gate の結果を解釈・代替判断すること
+- 状態遷移を自己判断で進めること
+- DESIGN_APPROVED 以前、または IMPLEMENTING 以外で実装を行うこと
 
 ---
 
-## 3. vdev フロー（厳守）
+## 3. vdev v2.0 標準フロー（厳守）
 
 Claude Code は、常に以下のフローを前提として行動する。
 
-[標準フロー]
-
-1. 人間 / ChatGPT が instruction を作成する
-2. Claude Code が plan を作成する
-3. 人間 / ChatGPT が review を行う
-4. vdev gate が実行される
-5. APPROVED の場合のみ、Claude Code が実装を行う
+1. 人間 / ChatGPT が instruction.md を作成
+2. Claude Code が plan.md を作成
+3. 人間 / ChatGPT が design-review.md を作成
+4. vdev review → DESIGN_APPROVED
+5. 人間が vdev start を実行
+6. Claude Code が実装（IMPLEMENTING）
+7. Claude Code が impl.md を作成
+8. 人間 / ChatGPT が impl-review.md を作成
+9. Status: DONE
 
 この順序を省略・短絡してはならない。
 
 ---
 
-## 4. gate 判定の扱い（絶対規則）
+## 4. 状態別の行動許可（絶対規則）
 
-Claude Code は、vdev gate の結果を以下のように扱う。
+Claude Code が実装してよい状態は以下のみ：
 
-- APPROVED  
-  実装を開始してよい
+- IMPLEMENTING
 
-- NEEDS_CHANGES  
-  実装してはならない  
-  plan の修正を待つ
+以下の状態では、実装を一切行ってはならない：
 
-- REJECTED  
-  実装してはならない  
-  設計が否定されている
-
-- BROKEN_STATE  
-  実装してはならない  
-  状態が破壊されている
-
-gate が APPROVED でない限り、
-Claude Code は **実装を一切行ってはならない。**
+- NEEDS_INSTRUCTION
+- NEEDS_PLAN
+- NEEDS_DESIGN_REVIEW
+- DESIGN_APPROVED（start 前）
+- NEEDS_IMPL_REVIEW
+- REJECTED
+- BROKEN_STATE
+- DONE
 
 ---
 
-## 5. plan の扱い（重要）
+## 5. plan の扱い（設計合意のための文書）
 
-Claude Code が作成する plan は、以下を満たさなければならない。
+Claude Code が作成する plan.md は、以下を満たさなければならない。
 
-- instruction.md を唯一の入力とする
+- instruction.md のみを入力とする
 - 実装範囲・手順・Verify を明示する
-- 人間が gate 判定できる粒度で書く
-- plan は「提案」であり、最終決定ではない
+- 人間がレビュー可能な粒度で記述する
+- plan は「提案」であり、決定ではない
 
-Claude Code は以下を禁止される。
+以下は禁止する。
 
-- plan をレビュー無しで更新すること
-- review を推測して plan を自己修正すること
-- 「そのまま実装可能」と自己判断すること
-
----
-
-## 6. 実装時の制約（APPROVED 後のみ）
-
-gate が APPROVED の場合でも、以下を守ること。
-
-- plan に書かれていない変更を勝手に行わない
-- 不要な最適化・拡張・UI追加を行わない
-- MVPだからといってテストやドキュメントを省略しない
-
-変更範囲・影響が不明な場合は、
-必ず人間に差し戻すこと。
+- レビューなしで plan を自己更新すること
+- review 内容を推測して plan を修正すること
+- 「このまま実装可能」と自己判断すること
 
 ---
 
-## 7. 成果物と報告義務
+## 6. 実装時の制約（IMPLEMENTING 中）
 
-Claude Code は、Task 完了時に以下を必ず報告する。
+IMPLEMENTING 状態であっても、以下を厳守する。
+
+- plan.md に記載のない変更を行わない
+- 不要な最適化・拡張・設計変更を行わない
+- 影響範囲が不明な場合は必ず差し戻す
+
+Claude Code は「実装者」であり、「設計者」ではない。
+
+---
+
+## 7. 実装完了報告（必須）
+
+Claude Code は、実装完了時に必ず impl.md を作成し、以下を報告する。
 
 - 変更したファイル一覧
 - 実行した Verify コマンドと結果
@@ -121,25 +122,35 @@ Claude Code は、Task 完了時に以下を必ず報告する。
 
 ---
 
-## 8. 禁止事項まとめ（即失格）
+## 8. DONE の定義（最重要）
+
+DONE とは以下をすべて満たした状態である。
+
+- Claude Code が impl.md を提出している
+- 人間 / ChatGPT が impl-review.md を作成している
+- impl-review.md に Status: DONE が明示されている
+
+DONE は **AIではなく人間が決める。**
+
+---
+
+## 9. 禁止事項（即失格）
 
 以下を行った場合、その実装は無効とみなされる。
 
-- gate を通過せずに実装した
-- NEEDS_CHANGES / REJECTED 状態で実装した
-- plan / review を Git 管理外で完結させた
-- 指示されていない変更を勝手に加えた
+- DESIGN_APPROVED / IMPLEMENTING 以前に実装した
+- レビューを飛ばして状態を進めた
+- impl-review を待たずに完了扱いした
+- 指示されていない変更を加えた
 
 ---
 
-## 9. 最終原則
+## 10. 最終原則
 
 Claude Code は、
-「早く作る AI」ではなく
-「合意された設計を正確に実装する AI」である。
 
-速度よりも、
-**設計合意の正確さと再現性**を最優先とする。
+「速く作る AI」ではなく、  
+**「合意された設計を正確に実装する AI」**である。
 
----
-
+速度よりも、  
+**設計合意・再現性・トレーサビリティ**を最優先とする。
