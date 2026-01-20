@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "topic": "2026-01-20-gbooks-add-default",
+  "title": "Gbooks Add Default",
+  "status": "DONE",
+  "paths": {
+    "instruction": "instruction.md",
+    "plan": "plan.md",
+    "designReview": "design-review.md",
+    "impl": "impl.md",
+    "implReview": "impl-review.md"
+  },
+  "hashes": {
+    "planSha256": "85804dca5b8e0f8f160770c8d8ef321b7d34baf28e75d6bd3a7c47cd808da607",
+    "designReviewSha256": "c704a2fe1629a1a4d21e685183d5d0bb2b6e80d4132e71fa724c4b27b609ae7b",
+    "implSha256": "93e22a91dafcaad49842529104c3081d010c3aa14c170feb92177657eb8468f2",
+    "implReviewSha256": "1e4877f4f86313f28b09b5bf48fec51e12cd5b01c140ef8a30b273c05a43e6e2"
+  },
+  "timestamps": {
+    "createdAt": "2026-01-20T17:18:42+09:00",
+    "updatedAt": "2026-01-20T17:38:04+09:00"
+  }
+}

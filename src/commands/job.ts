@@ -13,6 +13,14 @@ import {
   JobsConfigError,
 } from "../config/jobs.js";
 
+/**
+ * dre job add 時の google_books デフォルト値
+ */
+const DEFAULT_GOOGLE_BOOKS = {
+  printType: "books",
+  langRestrict: "ja",
+};
+
 function handleError(error: unknown): void {
   if (error instanceof JobsConfigError) {
     console.error(`Error: ${error.message}`);
@@ -73,6 +81,8 @@ jobCommand
   .option("--queries <queries>", "Multiple search queries (comma-separated)")
   .option("--mail-limit <limit>", "Override default mail_limit", parseInt)
   .option("--max-per-run <limit>", "Override default max_per_run", parseInt)
+  .option("--print-type <type>", "Google Books printType (default: books)")
+  .option("--lang-restrict <lang>", "Google Books langRestrict (default: ja)")
   .option("--disabled", "Create job as disabled")
   .action((options) => {
     try {
@@ -95,6 +105,10 @@ jobCommand
         name: options.name,
         queries,
         enabled: !options.disabled,
+        google_books: {
+          printType: options.printType ?? DEFAULT_GOOGLE_BOOKS.printType,
+          langRestrict: options.langRestrict ?? DEFAULT_GOOGLE_BOOKS.langRestrict,
+        },
         ...(options.mailLimit && { mail_limit: options.mailLimit }),
         ...(options.maxPerRun && { max_per_run: options.maxPerRun }),
       };
@@ -104,6 +118,7 @@ jobCommand
 
       console.log(`Job "${options.name}" added successfully.`);
       console.log(`  Queries: ${queries.join(", ")}`);
+      console.log(`  google_books: printType=${newJob.google_books.printType}, langRestrict=${newJob.google_books.langRestrict}`);
     } catch (error) {
       handleError(error);
     }
