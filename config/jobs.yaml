@@ -1,5 +1,8 @@
 defaults:
   interval: 3h
+  mail_limit: 5
+  max_per_run: 20
+  fallback_limit: 3
   limit: 5
   freshness: Week
   allowlist:
@@ -7,6 +10,7 @@ defaults:
     - zenn.dev
     - qiita.com
 jobs:
-  - name: claude-dre-coding
-    query: Claude バイブコーディング
+  - name: consultant-books
+    queries:
+      - コンサルタント 仕事
     enabled: true

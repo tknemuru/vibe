@@ -1,4 +1,5 @@
 import { Book, BookInput } from "../db/dao.js";
+import type { GoogleBooksConfig } from "../config/jobs.js";
 
 /**
  * Result from a single query collection
@@ -36,9 +37,10 @@ export interface Collector {
    * Collect books for given queries
    * @param queries Search queries
    * @param maxPerRun Maximum books to collect per run
+   * @param options Google Books API 検索オプション
    * @returns Collection result
    */
-  collect(queries: string[], maxPerRun: number): Promise<CollectorResult>;
+  collect(queries: string[], maxPerRun: number, options: GoogleBooksConfig): Promise<CollectorResult>;
 }
 
 /**

@@ -82,7 +82,7 @@ async function runJobV2(
     log("INFO", `max_per_run=${maxPerRun}`);
 
     const collector = createGoogleBooksCollector();
-    const collectResult = await collector.collect(queries, maxPerRun);
+    const collectResult = await collector.collect(queries, maxPerRun, job.google_books);
 
     log(
       "INFO",
@@ -226,10 +226,16 @@ export const runDueCommand = new Command("run-due")
       const summaryUpdated = results.reduce((sum, r) => sum + r.updatedCount, 0);
       const afterIsbnFilter = summaryTotalReturned - summaryTotalSkipped;
 
+      // ISBN hit rate 計算
+      const isbnHitRate = summaryTotalReturned > 0
+        ? ((afterIsbnFilter / summaryTotalReturned) * 100).toFixed(1)
+        : "N/A";
+
       console.log("\n=== Pipeline Summary ===");
       console.log(`API totalItems:     ${summaryTotalItems}`);
       console.log(`API returned:       ${summaryTotalReturned}`);
       console.log(`After ISBN filter:  ${afterIsbnFilter}`);
+      console.log(`ISBN hit rate:      ${isbnHitRate}% (${afterIsbnFilter}/${summaryTotalReturned})`);
       console.log(`Upsert result:      inserted=${summaryInserted}, updated=${summaryUpdated}`);
       console.log(`DB undelivered:     ${statsBeforeSelect.undelivered}`);
       console.log(`Selected for mail:  ${selection.books.length}`);

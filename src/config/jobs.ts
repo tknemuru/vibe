@@ -3,6 +3,14 @@ import { resolve } from "path";
 import yaml from "js-yaml";
 
 /**
+ * Google Books API 検索オプション（必須）
+ */
+export interface GoogleBooksConfig {
+  printType: string;    // 必須: "books" など
+  langRestrict: string; // 必須: "ja" など
+}
+
+/**
  * Job defaults configuration (Ver2.0)
  * - interval: 自由形式許可（例: "3h", "1d", "30m"）
  * - freshness: 廃止
@@ -26,6 +34,7 @@ export interface JobDefaults {
  * - queries: 複数クエリ対応（配列）
  * - query: 単一クエリ（後方互換性）
  * - mail_limit/max_per_run: オプションのオーバーライド
+ * - google_books: Google Books API 検索オプション（必須）
  */
 export interface Job {
   name: string;
@@ -34,6 +43,7 @@ export interface Job {
   enabled: boolean;
   mail_limit?: number;
   max_per_run?: number;
+  google_books: GoogleBooksConfig; // 必須
   // Legacy fields
   limit?: number;
   allowlist?: string[];
@@ -130,9 +140,25 @@ function validateJob(job: unknown, index: number): Job {
     throw new JobsConfigError(`jobs[${index}].enabled must be a boolean`);
   }
 
+  // google_books: 必須項目（先にバリデーション）
+  if (!j.google_books || typeof j.google_books !== "object") {
+    throw new JobsConfigError(`jobs[${index}].google_books is required`);
+  }
+  const gb = j.google_books as Record<string, unknown>;
+  if (typeof gb.printType !== "string" || gb.printType.trim() === "") {
+    throw new JobsConfigError(`jobs[${index}].google_books.printType is required`);
+  }
+  if (typeof gb.langRestrict !== "string" || gb.langRestrict.trim() === "") {
+    throw new JobsConfigError(`jobs[${index}].google_books.langRestrict is required`);
+  }
+
   const result: Job = {
     name: j.name.trim(),
     enabled: j.enabled,
+    google_books: {
+      printType: gb.printType.trim(),
+      langRestrict: gb.langRestrict.trim(),
+    },
   };
 
   // Handle queries array

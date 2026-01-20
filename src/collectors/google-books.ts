@@ -109,6 +109,14 @@ function volumeToBookInput(volume: GoogleBooksVolume): BookInput | null {
  * Search Google Books API
  */
 /**
+ * Google Books API 検索オプション（必須）
+ */
+export interface GoogleBooksSearchOptions {
+  printType: string;
+  langRestrict: string;
+}
+
+/**
  * Google Books API 検索結果
  */
 interface SearchResult {
@@ -120,7 +128,8 @@ interface SearchResult {
 
 async function searchGoogleBooks(
   query: string,
-  maxResults: number = 10
+  maxResults: number,
+  options: GoogleBooksSearchOptions
 ): Promise<SearchResult> {
   const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
   if (!apiKey) {
@@ -143,8 +152,8 @@ async function searchGoogleBooks(
   url.searchParams.set("q", query);
   url.searchParams.set("key", apiKey);
   url.searchParams.set("maxResults", Math.min(maxResults, 40).toString()); // API max is 40
-  url.searchParams.set("printType", "books");
-  url.searchParams.set("langRestrict", "ja"); // Prefer Japanese books
+  url.searchParams.set("printType", options.printType);
+  url.searchParams.set("langRestrict", options.langRestrict);
 
   try {
     const response = await fetch(url.toString());
@@ -199,7 +208,11 @@ async function searchGoogleBooks(
 export class GoogleBooksCollector implements Collector {
   readonly source = SOURCE_NAME;
 
-  async collect(queries: string[], maxPerRun: number): Promise<CollectorResult> {
+  async collect(
+    queries: string[],
+    maxPerRun: number,
+    options: GoogleBooksSearchOptions
+  ): Promise<CollectorResult> {
     const results: CollectorQueryResult[] = [];
     let totalBooks = 0;
     let totalSkipped = 0;
@@ -228,11 +241,11 @@ export class GoogleBooksCollector implements Collector {
       const toFetch = Math.min(perQuery, remaining);
 
       try {
-        const searchResult = await searchGoogleBooks(query, toFetch);
+        const searchResult = await searchGoogleBooks(query, toFetch, options);
 
-        // ログ出力: クエリごとの API 取得状況
+        // ログ出力: クエリごとの API 取得状況（printType / langRestrict を含む）
         console.log(
-          `[Collect] query="${query}", totalItems=${searchResult.totalItems}, returned=${searchResult.returned}, skipped=${searchResult.skipped} (no ISBN)`
+          `[Collect] query="${query}", printType=${options.printType}, langRestrict=${options.langRestrict}, totalItems=${searchResult.totalItems}, returned=${searchResult.returned}, skipped=${searchResult.skipped} (no ISBN)`
         );
 
         results.push({
