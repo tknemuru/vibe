@@ -11,11 +11,14 @@ import {
   selectBooksForMailByJob,
   getDeliveryStatsForJob,
   Book,
+  getCollectCursor,
+  upsertCollectCursor,
 } from "../db/dao.js";
 import { createGoogleBooksCollector } from "../collectors/google-books.js";
 import { CollectorError } from "../collectors/index.js";
 import { getGoogleBooksQuotaStatus } from "../utils/quota.js";
 import { sendBookDigestEmail, MailerError } from "../services/mailer.js";
+import { computeQuerySetHash, shortHash } from "../utils/hash.js";
 
 const DUE_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3 hours in milliseconds
 
@@ -77,12 +80,37 @@ async function runJobV2(
   const maxPerRun = job.max_per_run ?? defaults.max_per_run;
 
   try {
+    // 0. カーソル読み取り
+    const querySetHash = computeQuerySetHash(queries);
+    const cursor = getCollectCursor(jobName, querySetHash);
+
+    // 枯渇チェック
+    if (cursor?.is_exhausted) {
+      log("WARN", `[${jobName}] Skipped: exhausted (query_set_hash=${shortHash(querySetHash)})`);
+      return null;
+    }
+
     // 1. Collect books
     log("INFO", `Collecting books for queries: ${JSON.stringify(queries)}`);
-    log("INFO", `max_per_run=${maxPerRun}`);
+    log("INFO", `max_per_run=${maxPerRun}, startIndex=${cursor?.start_index ?? 0}`);
 
     const collector = createGoogleBooksCollector();
-    const collectResult = await collector.collect(queries, maxPerRun, job.google_books);
+    const collectResult = await collector.collect(queries, maxPerRun, job.google_books, {
+      startIndex: cursor?.start_index ?? 0,
+      isExhausted: false,
+    });
+
+    // カーソル保存
+    upsertCollectCursor(
+      jobName,
+      querySetHash,
+      collectResult.cursorState.startIndex,
+      collectResult.cursorState.isExhausted
+    );
+
+    if (collectResult.cursorState.isExhausted) {
+      log("WARN", `[${jobName}] Exhausted (query_set_hash=${shortHash(querySetHash)})`);
+    }
 
     log(
       "INFO",

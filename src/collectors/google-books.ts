@@ -4,14 +4,18 @@ import {
   CollectorResult,
   CollectorQueryResult,
   CollectorError,
+  CursorState,
+  CursorInput,
 } from "./index.js";
 import {
   checkGoogleBooksQuota,
   consumeGoogleBooksQuota,
 } from "../utils/quota.js";
+import { shortHash } from "../utils/hash.js";
 
 const GOOGLE_BOOKS_API_URL = "https://www.googleapis.com/books/v1/volumes";
 const SOURCE_NAME = "google_books";
+const API_MAX_RESULTS = 40;
 
 /**
  * Google Books API volume response
@@ -106,9 +110,6 @@ function volumeToBookInput(volume: GoogleBooksVolume): BookInput | null {
 }
 
 /**
- * Search Google Books API
- */
-/**
  * Google Books API 検索オプション（必須）
  */
 export interface GoogleBooksSearchOptions {
@@ -117,18 +118,23 @@ export interface GoogleBooksSearchOptions {
 }
 
 /**
- * Google Books API 検索結果
+ * Google Books API 検索結果（単一リクエスト）
  */
 interface SearchResult {
   books: BookInput[];
   skipped: number;
   totalItems: number;
   returned: number;
+  apiSuccess: boolean;
 }
 
+/**
+ * Search Google Books API with pagination support
+ */
 async function searchGoogleBooks(
   query: string,
   maxResults: number,
+  startIndex: number,
   options: GoogleBooksSearchOptions
 ): Promise<SearchResult> {
   const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
@@ -139,19 +145,11 @@ async function searchGoogleBooks(
     );
   }
 
-  // Check quota before making request
-  const quotaCheck = checkGoogleBooksQuota();
-  if (!quotaCheck.allowed) {
-    throw new CollectorError(
-      `Google Books API quota exceeded (${quotaCheck.current}/${quotaCheck.limit})`,
-      SOURCE_NAME
-    );
-  }
-
   const url = new URL(GOOGLE_BOOKS_API_URL);
   url.searchParams.set("q", query);
   url.searchParams.set("key", apiKey);
-  url.searchParams.set("maxResults", Math.min(maxResults, 40).toString()); // API max is 40
+  url.searchParams.set("maxResults", Math.min(maxResults, API_MAX_RESULTS).toString());
+  url.searchParams.set("startIndex", startIndex.toString());
   url.searchParams.set("printType", options.printType);
   url.searchParams.set("langRestrict", options.langRestrict);
 
@@ -174,7 +172,7 @@ async function searchGoogleBooks(
     const returned = data.items?.length ?? 0;
 
     if (!data.items || data.items.length === 0) {
-      return { books: [], skipped: 0, totalItems, returned: 0 };
+      return { books: [], skipped: 0, totalItems, returned: 0, apiSuccess: true };
     }
 
     const books: BookInput[] = [];
@@ -189,7 +187,7 @@ async function searchGoogleBooks(
       }
     }
 
-    return { books, skipped, totalItems, returned };
+    return { books, skipped, totalItems, returned, apiSuccess: true };
   } catch (error) {
     if (error instanceof CollectorError) {
       throw error;
@@ -203,7 +201,24 @@ async function searchGoogleBooks(
 }
 
 /**
- * Google Books Collector implementation
+ * 枯渇判定
+ */
+function checkExhaustion(
+  apiSuccess: boolean,
+  totalItems: number | undefined,
+  startIndex: number,
+  itemsLength: number
+): boolean {
+  // API 失敗または totalItems 取得不能なら枯渇ではない
+  if (!apiSuccess || totalItems === undefined) {
+    return false;
+  }
+  // items が空、または全件取得済み
+  return itemsLength === 0 || startIndex + itemsLength >= totalItems;
+}
+
+/**
+ * Google Books Collector implementation with pagination
  */
 export class GoogleBooksCollector implements Collector {
   readonly source = SOURCE_NAME;
@@ -211,72 +226,164 @@ export class GoogleBooksCollector implements Collector {
   async collect(
     queries: string[],
     maxPerRun: number,
-    options: GoogleBooksSearchOptions
+    options: GoogleBooksSearchOptions,
+    cursor?: CursorInput
   ): Promise<CollectorResult> {
     const results: CollectorQueryResult[] = [];
-    let totalBooks = 0;
+    let collectedBooks = 0;
     let totalSkipped = 0;
-    let totalItems = 0;
-    let totalReturned = 0;
+    let summaryTotalItems = 0;
+    let summaryTotalReturned = 0;
 
-    // Calculate how many results to fetch per query
-    const perQuery = Math.ceil(maxPerRun / queries.length);
+    // カーソルから開始位置を取得
+    let startIndex = cursor?.startIndex ?? 0;
+    const inputExhausted = cursor?.isExhausted ?? false;
 
-    for (const query of queries) {
-      // Check quota before each query
+    // 枯渇済みなら即終了
+    if (inputExhausted) {
+      console.warn(`[WARN][${this.source}] Already exhausted, skipping collection`);
+      return {
+        source: this.source,
+        results: [],
+        totalBooks: 0,
+        totalSkipped: 0,
+        totalItems: 0,
+        totalReturned: 0,
+        cursorState: {
+          startIndex,
+          isExhausted: true,
+          stopReason: "exhausted",
+        },
+      };
+    }
+
+    let stopReason: CursorState["stopReason"] = null;
+    let isExhausted = false;
+    let pageNumber = 0;
+    let lastTotalItems: number | undefined;
+
+    // 全クエリを結合して単一クエリとして扱う（ページング用）
+    // Note: Google Books API は複数クエリを OR で結合可能
+    const combinedQuery = queries.join(" OR ");
+
+    // ページングループ
+    while (collectedBooks < maxPerRun) {
+      // クォータチェック
       const quotaCheck = checkGoogleBooksQuota();
       if (!quotaCheck.allowed) {
-        console.warn(
-          `[WARN] Google Books quota exhausted, stopping collection early`
+        console.log(
+          `[${this.source}] Stopped: quota limit reached, next startIndex=${startIndex}`
         );
+        stopReason = "quota";
         break;
       }
 
-      // Stop if we've collected enough
-      if (totalBooks >= maxPerRun) {
-        break;
-      }
+      // 残り件数に応じた maxResults（overfetch 防止）
+      const remaining = maxPerRun - collectedBooks;
+      const maxResults = Math.min(API_MAX_RESULTS, remaining);
 
-      const remaining = maxPerRun - totalBooks;
-      const toFetch = Math.min(perQuery, remaining);
+      pageNumber++;
 
       try {
-        const searchResult = await searchGoogleBooks(query, toFetch, options);
-
-        // ログ出力: クエリごとの API 取得状況（printType / langRestrict を含む）
-        console.log(
-          `[Collect] query="${query}", printType=${options.printType}, langRestrict=${options.langRestrict}, totalItems=${searchResult.totalItems}, returned=${searchResult.returned}, skipped=${searchResult.skipped} (no ISBN)`
+        const searchResult = await searchGoogleBooks(
+          combinedQuery,
+          maxResults,
+          startIndex,
+          options
         );
 
-        results.push({
-          query,
-          books: searchResult.books,
-          skipped: searchResult.skipped,
-          totalItems: searchResult.totalItems,
-          returned: searchResult.returned,
-        });
+        lastTotalItems = searchResult.totalItems;
 
-        totalBooks += searchResult.books.length;
+        console.log(
+          `[${this.source}] Page ${pageNumber}: startIndex=${startIndex}, returned=${searchResult.returned}, totalItems=${searchResult.totalItems}`
+        );
+
+        // 結果を記録
+        if (searchResult.books.length > 0 || pageNumber === 1) {
+          results.push({
+            query: combinedQuery,
+            books: searchResult.books,
+            skipped: searchResult.skipped,
+            totalItems: searchResult.totalItems,
+            returned: searchResult.returned,
+          });
+        }
+
+        collectedBooks += searchResult.books.length;
         totalSkipped += searchResult.skipped;
-        totalItems += searchResult.totalItems;
-        totalReturned += searchResult.returned;
+        summaryTotalItems = searchResult.totalItems; // 最新の totalItems
+        summaryTotalReturned += searchResult.returned;
+
+        // 枯渇判定（API 成功時のみ）
+        if (
+          checkExhaustion(
+            searchResult.apiSuccess,
+            searchResult.totalItems,
+            startIndex,
+            searchResult.returned
+          )
+        ) {
+          isExhausted = true;
+          stopReason = "exhausted";
+
+          // 枯渇時のログ（hash は呼び出し元から渡されないのでここでは省略）
+          console.warn(
+            `[WARN][${this.source}] Exhausted: startIndex=${startIndex + searchResult.returned} >= totalItems=${searchResult.totalItems}`
+          );
+
+          // items.length > 0 なら startIndex を更新
+          if (searchResult.returned > 0) {
+            startIndex += searchResult.returned;
+          }
+          // items.length === 0 なら startIndex 据え置き
+          break;
+        }
+
+        // startIndex を更新
+        startIndex += searchResult.returned;
+
+        // 上限到達判定
+        if (collectedBooks >= maxPerRun) {
+          stopReason = "max_per_run";
+          console.log(
+            `[${this.source}] Stopped: max_per_run reached (${collectedBooks}/${maxPerRun}), next startIndex=${startIndex}`
+          );
+          break;
+        }
       } catch (error) {
+        // エラー時は枯渇にせず停止
+        stopReason = "error";
+        console.error(
+          `[${this.source}] Stopped: API error, preserving startIndex=${startIndex}`
+        );
         if (error instanceof CollectorError) {
           console.error(`[ERROR] ${error.message}`);
-          // Continue with other queries on error
         } else {
           throw error;
         }
+        break;
       }
+    }
+
+    // ボトルネック検出ログ（枯渇でない場合のみ）
+    if (!isExhausted && lastTotalItems !== undefined && summaryTotalReturned < lastTotalItems) {
+      console.log(
+        `[${this.source}] Bottleneck: API returned (${summaryTotalReturned}) << totalItems (${lastTotalItems}) -> pagination in progress`
+      );
     }
 
     return {
       source: this.source,
       results,
-      totalBooks,
+      totalBooks: collectedBooks,
       totalSkipped,
-      totalItems,
-      totalReturned,
+      totalItems: summaryTotalItems,
+      totalReturned: summaryTotalReturned,
+      cursorState: {
+        startIndex,
+        isExhausted,
+        stopReason,
+      },
     };
   }
 }

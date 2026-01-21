@@ -401,3 +401,82 @@ sudo systemctl stop dre-serve.service
 | `dre db reset` | DB リセット |
 | `dre mail status` | 配信ステータス |
 | `dre mail reset` | 配信リセット |
+| `dre job cursor reset NAME --yes` | カーソルリセット |
+
+## カーソル管理（ページング状態）
+
+### 概要
+
+Google Books API からの書籍収集は、ページング（startIndex）を使用して段階的に取得します。
+カーソル（ページング状態）は `collect_cursor` テーブルに永続化され、次回実行時に続きから取得できます。
+
+### カーソルの動作
+
+1. **初回実行**: `startIndex=0` から開始
+2. **継続実行**: 前回の `startIndex` から継続
+3. **枯渇検出**: 全件取得完了時に `is_exhausted=true` となり、以降の収集をスキップ
+
+### query_set_hash
+
+クエリ配列が変更されたかを検出するため、SHA-256 ハッシュを使用します。
+
+- クエリ配列をソート後に連結してハッシュ化
+- クエリ変更時は新しいハッシュとして扱われ、`startIndex=0` から再開
+- 大文字小文字は区別される（API クエリとして重要なため）
+
+### カーソルリセット
+
+クエリは変更していないが、最初から収集し直したい場合:
+
+```bash
+# 安全のため --yes が必須
+dre job cursor reset ai-books --yes
+```
+
+リセットにより:
+- 指定ジョブの全カーソルが削除される
+- `is_exhausted` フラグがクリアされる
+- 次回実行時に `startIndex=0` から開始
+
+### ユースケース
+
+#### 枯渇後に新刊が追加された場合
+
+```bash
+# カーソルをリセットして再収集
+dre job cursor reset ai-books --yes
+
+# 次回 run-due で startIndex=0 から再開
+dre run-due
+```
+
+#### 特定ジョブのみ最初から収集し直したい場合
+
+```bash
+dre job cursor reset tech-books --yes
+```
+
+### トラブルシューティング
+
+#### 「Skipped: exhausted」が表示される
+
+```
+[WARN] [ai-books] Skipped: exhausted (query_set_hash=abc123...)
+```
+
+全件取得済みのため収集がスキップされています。新刊を取得したい場合は:
+
+```bash
+dre job cursor reset ai-books --yes
+```
+
+#### クエリを変更したのに古いカーソルが使われる
+
+クエリ変更時は自動的に新しい query_set_hash となります。
+古いカーソルは残りますが、新しいクエリでは使用されません。
+
+不要なカーソルをクリアしたい場合:
+
+```bash
+dre job cursor reset JOB_NAME --yes
+```

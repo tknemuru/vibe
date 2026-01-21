@@ -12,6 +12,7 @@ import {
   getJobMaxPerRun,
   JobsConfigError,
 } from "../config/jobs.js";
+import { resetCollectCursorsByJob } from "../db/dao.js";
 
 /**
  * dre job add 時の google_books デフォルト値
@@ -263,3 +264,22 @@ jobCommand
       handleError(error);
     }
   });
+
+// dre job cursor - カーソル関連操作
+const cursorCommand = new Command("cursor")
+  .description("Cursor related operations");
+
+cursorCommand
+  .command("reset <job-name>")
+  .description("Reset cursor/exhausted state for a job")
+  .requiredOption("--yes", "Confirm the reset (required for safety)")
+  .action((jobName) => {
+    try {
+      const count = resetCollectCursorsByJob(jobName);
+      console.log(`Reset ${count} cursor(s) for job: ${jobName}`);
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+jobCommand.addCommand(cursorCommand);

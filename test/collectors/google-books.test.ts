@@ -160,7 +160,7 @@ describe("GoogleBooksCollector", () => {
   });
 
   describe("ログ出力", () => {
-    it("ログに printType / langRestrict が出力されること", async () => {
+    it("ページング情報がログに出力されること", async () => {
       const consoleSpy = vi.spyOn(console, "log");
 
       mockFetch.mockResolvedValueOnce({
@@ -182,11 +182,12 @@ describe("GoogleBooksCollector", () => {
       const collector = new GoogleBooksCollector();
       await collector.collect(["test query"], 10, { printType: "books", langRestrict: "ja" });
 
+      // ページング情報がログに含まれることを確認
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("printType=books")
+        expect.stringContaining("startIndex=0")
       );
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining("langRestrict=ja")
+        expect.stringContaining("returned=1")
       );
 
       consoleSpy.mockRestore();

@@ -354,5 +354,19 @@ function initSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_prompt_tokens_expires ON prompt_tokens(expires_at);
+
+    -- ============================================
+    -- Collect カーソルテーブル（ページング状態管理）
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS collect_cursor (
+      job_name TEXT NOT NULL,
+      query_set_hash TEXT NOT NULL,
+      start_index INTEGER NOT NULL DEFAULT 0,
+      is_exhausted INTEGER NOT NULL DEFAULT 0,
+      last_updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (job_name, query_set_hash)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_collect_cursor_job ON collect_cursor(job_name);
   `);
 }

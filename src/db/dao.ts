@@ -911,3 +911,124 @@ export function cleanupExpiredTokens(): number {
 
   return result.changes;
 }
+
+// ============================================
+// Collect カーソル（ページング状態管理）
+// ============================================
+
+/**
+ * Collect カーソルエンティティ
+ */
+export interface CollectCursor {
+  job_name: string;
+  query_set_hash: string;
+  start_index: number;
+  is_exhausted: boolean;
+  last_updated_at: string;
+}
+
+/**
+ * カーソルを取得する
+ * @param jobName - ジョブ名
+ * @param querySetHash - クエリ集合のハッシュ
+ * @returns カーソル情報、存在しない場合はundefined
+ */
+export function getCollectCursor(
+  jobName: string,
+  querySetHash: string
+): CollectCursor | undefined {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT * FROM collect_cursor WHERE job_name = ? AND query_set_hash = ?"
+    )
+    .get(jobName, querySetHash) as
+    | {
+        job_name: string;
+        query_set_hash: string;
+        start_index: number;
+        is_exhausted: number;
+        last_updated_at: string;
+      }
+    | undefined;
+
+  if (!row) return undefined;
+
+  return {
+    job_name: row.job_name,
+    query_set_hash: row.query_set_hash,
+    start_index: row.start_index,
+    is_exhausted: row.is_exhausted === 1,
+    last_updated_at: row.last_updated_at,
+  };
+}
+
+/**
+ * カーソルを更新する（UPSERT）
+ * @param jobName - ジョブ名
+ * @param querySetHash - クエリ集合のハッシュ
+ * @param startIndex - 次回開始位置
+ * @param isExhausted - 枯渇フラグ
+ */
+export function upsertCollectCursor(
+  jobName: string,
+  querySetHash: string,
+  startIndex: number,
+  isExhausted: boolean
+): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO collect_cursor (job_name, query_set_hash, start_index, is_exhausted, last_updated_at)
+     VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(job_name, query_set_hash) DO UPDATE SET
+       start_index = excluded.start_index,
+       is_exhausted = excluded.is_exhausted,
+       last_updated_at = datetime('now')`
+  ).run(jobName, querySetHash, startIndex, isExhausted ? 1 : 0);
+}
+
+/**
+ * ジョブのカーソルをリセットする（削除）
+ * @param jobName - ジョブ名
+ * @returns 削除されたレコード数
+ */
+export function resetCollectCursorsByJob(jobName: string): number {
+  const db = getDb();
+  const result = db
+    .prepare("DELETE FROM collect_cursor WHERE job_name = ?")
+    .run(jobName);
+  return result.changes;
+}
+
+/**
+ * カーソル一覧を取得する（内部デバッグ用）
+ * @param jobName - ジョブ名（省略時は全件）
+ * @returns カーソルの配列
+ */
+export function listCollectCursors(jobName?: string): CollectCursor[] {
+  const db = getDb();
+
+  let rows: {
+    job_name: string;
+    query_set_hash: string;
+    start_index: number;
+    is_exhausted: number;
+    last_updated_at: string;
+  }[];
+
+  if (jobName) {
+    rows = db
+      .prepare("SELECT * FROM collect_cursor WHERE job_name = ?")
+      .all(jobName) as typeof rows;
+  } else {
+    rows = db.prepare("SELECT * FROM collect_cursor").all() as typeof rows;
+  }
+
+  return rows.map((row) => ({
+    job_name: row.job_name,
+    query_set_hash: row.query_set_hash,
+    start_index: row.start_index,
+    is_exhausted: row.is_exhausted === 1,
+    last_updated_at: row.last_updated_at,
+  }));
+}
