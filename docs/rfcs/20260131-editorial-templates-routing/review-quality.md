@@ -2,19 +2,23 @@
 
 ### 1. 判定 (Decision)
 
-- **Status**: Request Changes
+- **Status**: Approve
 
-**判定基準:** P0 が2件存在するため Request Changes とする。
+**判定基準:** P0 が0件のため Approve とする。
 
 ### 2. 良い点 (Strengths)
 
-- **6. 代替案の検討**: テンプレートを TypeScript 文字列リテラルに埋め込む案（案A）と独立ファイル（案B）の比較は的確である。テンプレートは「実装契約」としての性質を持ち、非エンジニアによる確認・修正の可能性を考慮すると、Markdown + YAML の独立ファイル方式は妥当な選択である。変数名の整合性をテストで担保するアプローチも過不足がない。
+- **5.2 変数規約（全テンプレート共通）**: 前回レビューの P0-1 で指摘した `Book` 型フィールドとの不整合が全面的に解消されている。`{{book.published_date}}` への統一、`{{book.publisher}}` の追加、`{{book.authors}}` の差し込み値形式（パース済みカンマ区切り文字列）の明示はいずれも妥当であり、変数名と `Book` 型フィールド名の対応表・変換ルールの定義により、将来の実装時にマッピングの混乱が生じる余地がない。既存の `getBookAuthors()` → `join(", ")` パターンとの整合性も確保されている。
 
-- **3. 目的とスコープ（やらないこと）**: LLM API 呼び出しの実装、生成品質チューニング、書籍タイプの自動分類プロンプトを明示的にスコープ外としている点は、RFC のスコープを「テンプレートとルーティング定義の登録」に限定する上で重要であり、Over-engineering の回避に寄与している。
+- **5.3 routing_rules.yaml**: 前回レビューの P0-2 で指摘した `intellectual_pleasure` ステージの出力フィールド名不整合が解消されている。全ステージの `output` に `reason` フィールドが追加され、`note` でルーティング未使用であることが明記された。また、前回 P1-3 で指摘した `confidence` のソースステージ不明確の問題が `output_routing.confidence_source: interest_filter` の追加で解決されている。P1-4 で指摘した `confidence` の値域定義も `confidence.type: enum` / `confidence.values: [high, medium, low]` / `confidence.fallback: low` として明確に定義された。全体として、ルーティング定義の SoT としての一貫性と完全性が大幅に向上している。
 
-- **5.2 テンプレート設計（ファイル命名規約・変数規約）**: `{機能名}.system.md` / `{機能名}.user.md` の命名規約と、`{{book.*}}` への変数統一は、テンプレート群の一貫性を保つ上で合理的である。テストでプレースホルダの規約外使用を検知する設計と組み合わせることで、将来の実装時にテンプレート変数の不整合を早期に発見できる。
+- **3. 目的とスコープ（やらないこと）**: LLM API 呼び出しの実装、生成品質チューニング、書籍タイプの自動分類プロンプトを明示的にスコープ外としている点は、RFC のスコープを「テンプレートとルーティング定義の登録」に厳密に限定する上で重要であり、Over-engineering の回避に寄与している。
 
-- **5.6 テスト設計**: テンプレ破壊検知（空ファイル検知、変数プレースホルダ規約検証）とルーティング定義の必須キー検証に絞った最低限のテスト設計は、「テンプレートとルーティング定義の登録」というスコープに対して適切な粒度である。`deep_thinking_fiction.system.md` の必須構造検証（セクション0〜7、アンカー密度6〜10）も、テンプレートの構造的破壊を検知する上で有用である。
+- **5.1 ディレクトリ構成**: 前回 P1-1 で指摘した `config/` と `templates/` の棲み分け方針が明記された。`config/` はアプリケーション設定、`templates/` は LLM プロンプト・ルーティング定義という責務の分離は明確であり、将来の実装時に探索パスの混乱が生じにくい。
+
+- **5.6 テスト設計**: 前回 P1-2 で指摘した `routing_rules.yaml` のスキーマバリデーション不足が解消されている。`stages` 配下の `model` / `output` キー検証、`output_routing.by_confidence` の3キー検証、`auto_triggers` の構造検証、`confidence` の enum 定義検証がテストケースに追加された。SoT の構造的整合性を担保する粒度として十分である。
+
+- **5.2 外部データの安全性に関する方針**: プロンプトインジェクションとテンプレート構造破壊のリスクを識別し、本 RFC のスコープ外であることを明示しつつ、SoT としての方針（サニタイズ処理、防御的記述ガイドライン、system プロンプトでの防御的指示）を定めている。スコープの切り分けとリスク認識のバランスが妥当である。
 
 - **7.4 マイグレーションと後方互換性**: 新規ファイルの追加のみでありロールバックはファイル削除で完了するという分析は正確である。既存の `src/commands/run-due.ts` パイプライン（Collect → Upsert → Select → Mail）に一切の変更を加えない設計は、リスクを最小化している。
 
@@ -29,47 +33,26 @@
 
 #### 指摘一覧
 
-**[P0-1] テンプレート変数規約と既存 `Book` 型フィールドの不整合**
-
-- **対象セクション**: 5.2 テンプレート設計 > 変数規約（全テンプレート共通）
-- **内容**: RFC では変数を `{{book.title}}`、`{{book.authors}}`、`{{book.published}}`、`{{book.description}}` の4種と定義し、「`src/services/prompt-builder.ts` の `buildDeepResearchPrompt()` が利用する書籍情報（`Book` 型の `title`, `authors_json`, `published_date`, `description`）に対応する」と記載している。しかし、以下の不整合が存在する。
-  1. `{{book.authors}}` は `Book` 型の `authors_json` に対応するとされるが、`authors_json` は JSON 文字列（`string | null`）であり、テンプレートに差し込む際のパース・フォーマット処理（`getBookAuthors()` → `join(", ")` 相当）の責務がテンプレート側にもコード側にも定義されていない。将来の実装時にテンプレートエンジンが `authors_json` をそのまま差し込むのか、パース済み文字列を差し込むのかが不明確である。
-  2. `{{book.published}}` は `Book` 型の `published_date` に対応するとされるが、変数名が `published` であり `published_date` ではない。命名の不一致は将来の実装時にマッピングの混乱を招く。
-  3. 既存の `buildDeepResearchPrompt()` は `publisher`（出版社）も利用しているが、テンプレート変数に `{{book.publisher}}` が含まれていない。判定プロンプト群では不要かもしれないが、Editorial テンプレート群での必要性が検討されていない。
-- **修正の期待値**: テンプレート変数と `Book` 型フィールドの対応表を明示し、以下を解決すること。(a) `{{book.authors}}` に差し込まれる値の形式（JSON 文字列 or パース済みカンマ区切り文字列）を定義する。(b) `{{book.published}}` を `{{book.published_date}}` に統一するか、マッピングルールを明記する。(c) `{{book.publisher}}` の要否を明示的に判断し、必要であれば変数規約に追加する。
-
-**[P0-2] `routing_rules.yaml` の `intellectual_pleasure` ステージ出力フィールドと判定プロンプト出力定義の不整合**
+**[P1-1] `auto_triggers` の `confidence` 参照元が暗黙的**
 
 - **対象セクション**: 5.3 ルーティング定義 > routing_rules.yaml
-- **内容**: `routing_rules.yaml` の `stages.intellectual_pleasure.output` は `[interested, confidence]` と定義されている。一方、セクション5.2の判定プロンプト群の表では `intellectual_pleasure` の出力は `{intellectual_pleasure, confidence, reason}` と定義されている。出力フィールド名が `interested` と `intellectual_pleasure` で異なっており、ルーティング定義とプロンプト出力仕様が矛盾している。`thinking_fiction` ステージも同様に、`stages.thinking_fiction.output` が `[thinking_fiction, confidence]` であるのに対し、プロンプト出力は `{thinking_fiction, confidence, reason}` であり、`reason` フィールドがルーティング定義に含まれていない。`interest_filter` も出力が `[interested, confidence]` だがプロンプト出力は `{interested, confidence, reason}` であり、`reason` が欠落している。ルーティング定義が SoT であるとするならば、プロンプト出力との整合性を担保しなければ、将来の実装時に出力パース処理が正しく動作しない。
-- **修正の期待値**: (a) `intellectual_pleasure` ステージの `output` フィールド名をプロンプト出力定義と統一する（`interested` → `intellectual_pleasure` または逆方向の統一）。(b) 全ステージの `output` に `reason` フィールドを含めるか、`reason` はルーティングに使用しないため `output` には含めない旨を明記する。(c) `routing_rules.yaml` とプロンプト出力定義の対応関係を明確にする。
+- **内容**: `output_routing` セクションには `confidence_source: interest_filter` が明記されており、出力ルーティングで使用する `confidence` のソースが明確である。一方、`auto_triggers` セクションでも `confidence: high` を参照しているが、こちらの `confidence` がどのステージの出力値であるかは明記されていない。`output_routing` と同じく `interest_filter` の出力値を参照するのが自然であるが、`auto_triggers` 側にも `confidence_source` の指定またはコメントを追加すると、SoT としての一貫性がさらに向上する。
+- **修正の期待値**: `auto_triggers` セクションに `confidence_source: interest_filter` を追加するか、`notes` に「`auto_triggers` の `confidence` も `interest_filter` ステージの出力値を参照する」旨を明記することを推奨する。
 
-**[P1-1] テンプレートファイルの読み込みパスと既存 YAML 読み込みパターンの不整合**
+**[P1-2] `book_type.yaml` のテスト不在**
 
-- **対象セクション**: 5.1 ディレクトリ構成
-- **内容**: 既存コードベースでは設定ファイルは `config/` ディレクトリ配下に配置し、`src/config/jobs.ts` にて `resolve(process.cwd(), "config/jobs.yaml")` で読み込んでいる。本 RFC では新たに `templates/` をプロジェクトルート直下に新設するが、`config/` と `templates/` の2つのルート直下ディレクトリにそれぞれ異なる種類の YAML ファイルが配置されることになる（`config/jobs.yaml` と `templates/routing/routing_rules.yaml`、`templates/routing/book_type.yaml`）。将来の実装時に YAML ファイルの探索パスが分散し、読み込みロジックの一貫性が損なわれる可能性がある。
-- **修正の期待値**: 本 RFC のスコープでは実装を行わないため、ブロッカーとはしない。ただし、`config/` と `templates/` の棲み分け方針（例: `config/` はアプリケーション設定、`templates/` は LLM プロンプト・ルーティング定義）をセクション5.1 または `templates/README.md` の記載内容として明記することを推奨する。
+- **対象セクション**: 5.6 テスト設計 / 8. テスト戦略
+- **内容**: テスト設計では `routing_rules.yaml` のスキーマ検証とテンプレートファイルの検証が記載されているが、`book_type.yaml` に対するテストが含まれていない。`book_type.yaml` も SoT の一部として登録されるファイルであり、`routing_rules.yaml` の `auto_triggers` で `book_type: dictionary` として参照される。`book_type.yaml` に `dictionary` キーが存在しない場合、ルーティング定義との整合性が崩れる。
+- **修正の期待値**: テスト設計に `book_type.yaml` の基本検証を追加することを推奨する。最低限として (a) YAML として正しく読み込めること、(b) `types` キー配下に `routing_rules.yaml` の `auto_triggers` で参照される `dictionary` が存在すること、の2点で十分である。
 
-**[P1-2] `routing_rules.yaml` のスキーマバリデーション方針の未定義**
+**[P1-3] `deep_thinking_fiction` テンプレートの検証基準が他テンプレートと非対称**
 
 - **対象セクション**: 5.6 テスト設計
-- **内容**: テスト設計では `routing_rules.yaml` の必須キー存在チェック（`llm.default_model`, `output_routing.by_confidence`, `auto_triggers`）を行うとしているが、値の型や構造の検証（例: `stages` 配下の各ステージが `model` と `output` を持つこと、`auto_triggers` の `allow`/`deny` が配列であること）は記載されていない。`routing_rules.yaml` が SoT であることを考慮すると、キー存在のみの検証では構造破壊（キーは存在するが値が不正）を検知できない。
-- **修正の期待値**: テストケースに以下を追加することを推奨する。(a) `stages` 配下の各ステージが `model` と `output` キーを持つこと。(b) `output_routing.by_confidence` が `high`, `medium`, `low` の3キーを持つこと。(c) `auto_triggers` 配下の各トリガーが `enabled`, `allow`, `deny` を持つこと。過度な検証は不要だが、SoT の構造的整合性を最低限担保する粒度は必要である。
+- **内容**: `deep_thinking_fiction.system.md` に対しては必須構造（セクション 0〜7）とアンカー密度（6〜10）の詳細な構造検証が定義されているが、他の Editorial テンプレート（`editorial_lite`, `medium_lite`, `nano_lite`, `followup`）には空ファイル検知と変数プレースホルダ規約検証のみが適用される。これは `deep_thinking_fiction` が特に複雑な構造を持つためと推測されるが、テスト粒度の非対称性の理由が RFC に記載されていない。テンプレートの運用管理上、「なぜ `deep_thinking_fiction` だけ特別か」が将来の保守者に伝わりにくい。
+- **修正の期待値**: `deep_thinking_fiction` の構造検証を追加した理由（例: 複数セクションと密度要件を持つ唯一のテンプレートであるため）を RFC 本文またはテストケースのコメントに簡潔に記載することを推奨する。必須ではないが、テスト設計意図の透明性が向上する。
 
-**[P1-3] `output_routing.by_confidence` の分岐ロジックとデータフローの曖昧さ**
-
-- **対象セクション**: 5.3 ルーティング定義 > routing_rules.yaml / 5.4 データフロー
-- **内容**: `output_routing.by_confidence` は `high → editorial_lite`、`medium → medium_lite`、`low → nano_lite` と定義されている。しかし、`confidence` がどのステージの出力に由来するかが明記されていない。`interest_filter`、`intellectual_pleasure`、`thinking_fiction` の3ステージがそれぞれ `confidence` を出力するが、`output_routing` に使用される `confidence` がどのステージのものか（あるいは3つのうち最も高い/低いもの、`interest_filter` のもの等）が不明である。セクション5.4のデータフローでは「confidence による分岐」と記載されているのみで、具体的なマッピングルールがない。
-- **修正の期待値**: `routing_rules.yaml` または RFC 本文に、`output_routing.by_confidence` で参照される `confidence` がどのステージの出力値であるかを明記すること。例えば「`interest_filter` ステージの `confidence` を使用する」等の定義が必要である。
-
-**[P1-4] `confidence` の値域定義の欠如**
+**[P1-4] `interested=false` 時の挙動が `routing_rules.yaml` 自体に定義されていない**
 
 - **対象セクション**: 5.3 ルーティング定義 > routing_rules.yaml
-- **内容**: `output_routing.by_confidence` および `auto_triggers` で `confidence` の値として `high`、`medium`、`low` を使用しているが、この値がどのように決定されるか（LLM の出力をそのまま使用するのか、数値をカテゴリに変換するのか）が定義されていない。判定プロンプト群の出力仕様では `confidence` の型や値域が未定義であり、`routing_rules.yaml` 側で `high`/`medium`/`low` の3段階を前提としているが、プロンプト側でこの3段階をどう指示するかが対応していない。テンプレート登録のみのスコープではあるが、SoT としてのルーティング定義が `confidence` の値域を定義していないと、将来の実装時にプロンプトとルーティングの不整合が生じる。
-- **修正の期待値**: `routing_rules.yaml` に `confidence` の値域（`high`/`medium`/`low` の enum 定義）を明記するか、判定プロンプトの出力仕様に `confidence` のフォーマットを記載することを推奨する。
-
-**[P1-5] 可観測性設計の将来方針が不十分**
-
-- **対象セクション**: 7.3 可観測性 (Observability)
-- **内容**: 「本 RFC のスコープでは新規ログやメトリクスは不要」「将来の LLM 判定・生成実装時に、判定結果とルーティング選択のログを追加する」と記載されているが、将来の実装で必要となるログの具体的な項目（例: 各ステージの判定結果、confidence 値、ルーティング先、LLM レスポンスタイム）が示されていない。`routing_rules.yaml` が SoT であるならば、ルーティング定義にログレベルやメトリクスのヒントを組み込む設計を検討する余地がある。
-- **修正の期待値**: 本 RFC のスコープではブロッカーとしないが、将来の実装 RFC でカバーすべき可観測性要件（最低限: 各ステージの判定結果ログ、ルーティング選択ログ、LLM 呼び出しのレイテンシ）をノートとして記載することを推奨する。
+- **内容**: RFC 本文の「設計のポイント」では「`interested=false` の場合は配信しない（保存のみ）」と記載されているが、`routing_rules.yaml` の YAML 定義自体にはこのルールが記載されていない。`routing_rules.yaml` が SoT であるならば、`interested=false` 時の挙動も YAML 上に定義（または `notes` に明記）されているべきである。現状では RFC 本文を読まなければこのルールを把握できない。
+- **修正の期待値**: `routing_rules.yaml` の `notes` に「`interested=false` の場合は配信対象外とする（保存のみ）。永続化方針は将来の実装 RFC で定義する」旨を追加することを推奨する。RFC 本文の記述が既にあるため、YAML への転記のみで対応可能である。
