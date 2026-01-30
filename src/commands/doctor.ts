@@ -61,6 +61,11 @@ const ENV_CHECKS: EnvCheck[] = [
     description: "Daily Google Books API query limit (default: 100)",
     required: false,
   },
+  {
+    key: "COPY_PAGE_BASE_URL",
+    description: "Copy ページのベース URL (default: http://localhost:8787)",
+    required: false,
+  },
 ];
 
 function checkEnvVar(check: EnvCheck): { ok: boolean; value?: string } {
