@@ -154,8 +154,6 @@ DRE は 3 時間ごとにジョブを実行するよう設計されています�
 0 * * * * cd /path/to/dre && /usr/bin/node dist/cli.js run-due >> /var/log/dre.log 2>&1
 ```
 
-Windows Task Scheduler の場合は `docs/windows-task-scheduler.md` を参照してください。
-
 ### 手動実行
 
 ```bash
