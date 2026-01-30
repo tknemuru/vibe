@@ -236,7 +236,7 @@ Google Books API のページング状態を管理する。
 | query_set_hash | TEXT | NOT NULL, PRIMARY KEY (複合) | クエリセットの SHA-256 ハッシュ |
 | start_index | INTEGER | NOT NULL DEFAULT 0 | 次回取得開始位置 |
 | is_exhausted | INTEGER | NOT NULL DEFAULT 0 | 枯渇フラグ（0/1） |
-| last_updated_at | TEXT | NOT NULL DEFAULT datetime('now') | 最終更新日時（ISO タイムスタンプ） |
+| last_updated_at | TEXT | NOT NULL DEFAULT (datetime('now')) | 最終更新日時（ISO タイムスタンプ） |
 
 **インデックス:**
 - `idx_collect_cursor_job`: `job_name`
