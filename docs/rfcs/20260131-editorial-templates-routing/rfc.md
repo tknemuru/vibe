@@ -54,7 +54,12 @@
 
 ### 5.1 ディレクトリ構成
 
-プロジェクトルート直下に `templates/` ディレクトリを新設し、以下の構成で配置する。
+プロジェクトルート直下に `templates/` ディレクトリを新設し、以下の構成で配置する。`prompts/` 配下には合計 16 ファイル（判定プロンプト 3 種 × 2 + Editorial テンプレート 5 種 × 2）を配置する。
+
+**`config/` と `templates/` の棲み分け方針:**
+
+- `config/`: アプリケーション設定（`jobs.yaml` 等の実行時設定）
+- `templates/`: LLM プロンプト・ルーティング定義（Editorial レイヤーの SoT）
 
 ```
 dre/
@@ -91,22 +96,47 @@ dre/
 
 #### 変数規約（全テンプレート共通）
 
-テンプレート本文に含める差し込み変数名は以下に統一する。
+テンプレート本文に含める差し込み変数名は以下に統一する。各変数と `Book` 型フィールドの対応、および差し込み時のデータ変換ルールを以下の表に定義する。
 
-- `{{book.title}}`
-- `{{book.authors}}`
-- `{{book.published}}`
-- `{{book.description}}`
+| 変数名 | `Book` 型フィールド | 差し込み時の変換ルール |
+|--------|---------------------|------------------------|
+| `{{book.title}}` | `title` (TEXT NOT NULL) | そのまま文字列として展開する |
+| `{{book.authors}}` | `authors_json` (TEXT, JSON 配列) | `authors_json` を JSON パースし、カンマ区切り文字列として展開する（例: `"著者A, 著者B"`）。`null` または空配列の場合は `"不明"` を差し込む。既存の `getBookAuthors()` → `join(", ")` と同等の処理である |
+| `{{book.published_date}}` | `published_date` (TEXT) | そのまま文字列として展開する。`null` の場合は `"不明"` を差し込む |
+| `{{book.description}}` | `description` (TEXT) | そのまま文字列として展開する。`null` の場合は空文字を差し込む |
+| `{{book.publisher}}` | `publisher` (TEXT) | そのまま文字列として展開する。`null` の場合は `"不明"` を差し込む |
 
-これは `src/services/prompt-builder.ts` の `buildDeepResearchPrompt()` が利用する書籍情報（`Book` 型の `title`, `authors_json`, `published_date`, `description`）に対応する。
+**設計判断:**
+
+- `{{book.published}}` ではなく `{{book.published_date}}` を採用する。`Book` 型のフィールド名 `published_date` と一致させることで、実装時のマッピング混乱を防止する。
+- `{{book.publisher}}` を変数規約に追加する。既存の `buildDeepResearchPrompt()` が `publisher` を利用しており、Editorial テンプレート群でも書籍情報として有用である。
+- `{{book.authors}}` の差し込み値は JSON 文字列そのままではなく、パース済みのカンマ区切り文字列とする。これは既存の `prompt-builder.ts` の `getBookAuthors()` → `join(", ")` パターンに従う。
+
+**外部データの安全性に関する方針:**
+
+`{{book.*}}` 変数には Google Books API から取得した外部データが挿入される。特に `{{book.description}}` には任意のテキストが含まれ得るため、以下のリスクが存在する。
+
+1. **プロンプトインジェクション**: 書籍の description に LLM の指示を上書きする文言が含まれた場合、判定結果（`interested`, `confidence` 等）が操作される可能性がある。
+2. **テンプレート構造の破壊**: 差し込み値に Markdown の見出し記法やテンプレートの制御構造を模倣する文字列が含まれた場合、プロンプトの意図した構造が崩れる可能性がある。
+
+本 RFC はテンプレート登録のみがスコープであり、サニタイズ処理の実装は将来の LLM API 呼び出し実装 RFC で扱う。ただし、SoT としての方針を以下のとおり定める。
+
+- 将来の実装時に、差し込み値に対するサニタイズ（Markdown 制御文字のエスケープ）および入力値の長さ制限を適用すること。
+- `templates/README.md` に、テンプレート作成者向けの注意事項として、差し込み変数の前後に区切りマーカーを設けるなどの防御的記述ガイドラインを記載すること。
+- テンプレートの system プロンプトには、ユーザ入力（書籍情報）による指示の上書きを無視する旨の防御的指示を含めること。
 
 #### 判定プロンプト群（3種）
 
-| プロンプト | 目的 | 出力 |
-|-----------|------|------|
-| interest_filter | Editorial を作る価値があるかの判定 | `{interested, confidence, reason}` |
-| intellectual_pleasure | 知的快楽型かの判定 | `{intellectual_pleasure, confidence, reason}` |
-| thinking_fiction | 思考型フィクションかの判定 | `{thinking_fiction, confidence, reason}` |
+| プロンプト | 目的 | 出力 | 備考 |
+|-----------|------|------|------|
+| interest_filter | Editorial を作る価値があるかの判定 | `{interested, confidence, reason}` | `confidence` は `high` / `medium` / `low` の列挙値。ルーティングに使用する |
+| intellectual_pleasure | 知的快楽型かの判定 | `{intellectual_pleasure, confidence, reason}` | `confidence` はログ・デバッグ用（ルーティングには使用しない） |
+| thinking_fiction | 思考型フィクションかの判定 | `{thinking_fiction, confidence, reason}` | `confidence` はログ・デバッグ用（ルーティングには使用しない） |
+
+**出力フィールドの整理:**
+
+- `reason` フィールドは全ステージの出力に含まれるが、ルーティング判定には使用しない（ログ・デバッグ用途）。`routing_rules.yaml` の `stages.*.output` には `reason` を含め、ルーティングで使用しないフィールドは `note` で明記する。
+- `intellectual_pleasure` ステージの出力フィールド名は `intellectual_pleasure`（`interested` ではない）。各ステージの出力フィールド名はステージの判定対象に対応する。
 
 #### Editorial テンプレート群（5種）
 
@@ -132,18 +162,28 @@ LLM モデル指定、判定ステージ、出力ルーティング、自動発�
 llm:
   default_model: gpt-4o-mini
 
+confidence:
+  type: enum
+  values: [high, medium, low]
+  description: "LLM に high/medium/low のいずれかの文字列で出力させる"
+  fallback: low  # LLM が期待外の値を返却した場合のデフォルト
+
 stages:
   interest_filter:
     model: gpt-4o-mini
-    output: [interested, confidence]
+    output: [interested, confidence, reason]
+    note: "reason はルーティングには使用しない（ログ・デバッグ用）"
   intellectual_pleasure:
     model: gpt-4o-mini
-    output: [intellectual_pleasure, confidence]
+    output: [intellectual_pleasure, confidence, reason]
+    note: "reason はルーティングには使用しない（ログ・デバッグ用）"
   thinking_fiction:
     model: gpt-4o-mini
-    output: [thinking_fiction, confidence]
+    output: [thinking_fiction, confidence, reason]
+    note: "reason はルーティングには使用しない（ログ・デバッグ用）"
 
 output_routing:
+  confidence_source: interest_filter  # output_routing で参照する confidence は interest_filter ステージの出力値
   by_confidence:
     high: editorial_lite
     medium: medium_lite
@@ -170,12 +210,16 @@ notes:
   - "medium/low は自動 Deep/Follow-up を禁止（人手トリガは実装スコープ外）"
   - "辞書型は Deep 禁止、Follow-up が主"
   - "思考型フィクションは Deep が主"
+  - "confidence は LLM に列挙値（high/medium/low）として出力させる。数値スコアは使用しない"
+  - "LLM が期待外の値を返却した場合は low として扱う（フォールバック）"
+  - "interested=false の書籍の永続化方針（DB への保存有無、配信候補からの除外方法）は将来の実装 RFC で定義する"
 ```
 
 設計のポイント:
 
-- `interested=false` の場合は配信しない（保存のみ。既存の `src/commands/run-due.ts` のパイプラインには影響しない）
-- `interested=true` の場合、`confidence` によって出力段階を分岐する（high → Lite、medium → Medium-Lite、low → Nano-Lite）
+- `interested=false` の場合は配信しない（保存のみ）。本 RFC のスコープではコード変更を伴わないため、現時点では既存の `src/commands/run-due.ts` のパイプラインに影響しない。将来の LLM 判定実装時には、Select フェーズの前段にフィルタリングロジックを追加する必要があり、パイプラインへの変更が発生する。その詳細設計は将来の実装 RFC で定義する。
+- `interested=true` の場合、`interest_filter` ステージの `confidence` によって出力段階を分岐する（high → Lite、medium → Medium-Lite、low → Nano-Lite）
+- `confidence` は `high` / `medium` / `low` の列挙値（文字列）として LLM に出力させる。数値スコアからのマッピングは行わない。LLM が期待外の値を返却した場合は `low` として扱う。
 - Deep / Follow-up はデフォルトで自動発火しない。自動発火は `confidence=high` の場合のみ許可する
 - 辞書型（dictionary）は Deep 禁止、Follow-up 優先
 - 思考型フィクション（`thinking_fiction=true`）は Deep 優先
@@ -183,6 +227,15 @@ notes:
 #### book_type.yaml
 
 書籍タイプ分類の定義ファイルである。自動分類プロンプトは本 RFC のスコープ外とする。
+
+**書籍タイプとプロンプト判定属性の区別:**
+
+本システムでは書籍の特性を2つの異なる軸で扱う。
+
+1. **書籍タイプ（`book_type`）**: 書籍のコンテンツ構造に基づくカテゴリ分類。`book_type.yaml` に定義される。将来的に自動分類プロンプトまたは手動で設定する。
+2. **プロンプト判定属性**: 判定プロンプトの出力結果として得られるブーリアン属性。`thinking_fiction` はこちらに該当する。`thinking_fiction` は書籍タイプ（カテゴリ）ではなく、`thinking_fiction` 判定プロンプトが出力する属性値（`true` / `false`）である。
+
+この区別により、ルーティング定義の `auto_triggers` では `book_type: dictionary`（カテゴリ値）と `thinking_fiction: true`（属性値）が異なる軸として参照される。
 
 ```yaml
 types:
@@ -205,19 +258,22 @@ types:
 Books → interest_filter（判定）
          │
          ├── interested=false → 配信なし（保存のみ）
+         │   ※ 永続化方針は将来の実装 RFC で定義
          │
          └── interested=true
               │
               ├── intellectual_pleasure（判定）
               ├── thinking_fiction（判定）
               │
-              └── confidence による分岐
+              └── interest_filter の confidence による分岐
                    ├── high → Editorial-Lite
                    │          ├── thinking_fiction=true → Deep（自動発火）
                    │          └── book_type=dictionary → Follow-up（自動発火）
                    ├── medium → Medium-Lite
                    └── low → Nano-Lite
 ```
+
+**注記:** ルーティングに使用する `confidence` は `interest_filter` ステージの出力値である。`intellectual_pleasure` および `thinking_fiction` ステージの `confidence` はルーティング判定には使用しない（ログ・デバッグ用途）。
 
 ### 5.5 ドキュメント更新
 
@@ -241,8 +297,22 @@ Books → interest_filter（判定）
 #### docs/ops.md
 
 - テンプレート更新手順（変更 → テスト → レビュー）
-- 破壊的変更の禁止事項（必須構造、アンカー密度など）
-- 既定モデル変更は `routing_rules.yaml` と docs の両方を更新する必要があること
+- 破壊的変更の定義と禁止事項:
+  1. 必須の差し込み変数（`{{book.title}}` 等）の削除
+  2. system プロンプトの役割指示（ペルソナ・出力形式の指定）の削除または根本的変更
+  3. 字数目安の大幅な逸脱（セクション 5.2 の表に定義された範囲の ±50% を超える変更）
+  4. `deep_thinking_fiction.system.md` の必須構造（セクション 0〜7 の見出し）の削除
+  5. `deep_thinking_fiction.system.md` のアンカー密度要件（1セクションあたり 6〜10 個の具体的参照ポイント）の削除
+  - 上記に該当する変更はテスト（プレースホルダ検証・必須構造検証）またはレビューで検知する
+- 既定モデル変更手順:
+  1. `routing_rules.yaml` の `llm.default_model` および `stages` 配下の `model` を更新する
+  2. `docs/architecture.md` の該当記述を更新する
+  3. テスト（`default_model` の値チェック）を更新する
+  4. 上記 3 点を同一 PR で同時に更新すること
+- モデル廃止時の対応手順:
+  1. OpenAI の非推奨通知（Deprecation Notice）を確認する
+  2. 代替モデルの選定基準: コスト、レイテンシ、出力品質の 3 点で評価する
+  3. `routing_rules.yaml` と docs の同時更新手順に従い切り替える
 
 ### 5.6 テスト設計
 
@@ -255,11 +325,17 @@ Books → interest_filter（判定）
 describe('routing_rules.yaml', () => {
   it('必須キーが存在すること（llm.default_model, output_routing.by_confidence, auto_triggers）')
   it('default_model が gpt-4o-mini であること')
+  it('stages 配下の各ステージが model と output キーを持つこと')
+  it('output_routing.by_confidence が high, medium, low の3キーを持つこと')
+  it('output_routing.confidence_source が定義されていること')
+  it('auto_triggers 配下の各トリガーが enabled, allow, deny を持つこと')
+  it('confidence.type が enum であり values に high, medium, low が含まれること')
 })
 
 describe('templates/prompts', () => {
   it('全 md ファイルが空でないこと')
   it('変数プレースホルダが {{book.*}} 以外を使用していないこと')
+  it('使用される変数名が規約で定義された変数（title, authors, published_date, description, publisher）のみであること')
 })
 
 describe('deep_thinking_fiction.system.md', () => {
@@ -302,7 +378,10 @@ describe('deep_thinking_fiction.system.md', () => {
 ### 7.3 可観測性 (Observability)
 
 - 本 RFC のスコープでは新規ログやメトリクスは不要である。
-- 将来の LLM 判定・生成実装時に、判定結果とルーティング選択のログを追加する。
+- 将来の LLM 判定・生成実装 RFC でカバーすべき可観測性要件（参考）:
+  - 各ステージ（`interest_filter`, `intellectual_pleasure`, `thinking_fiction`）の判定結果ログ
+  - ルーティング選択ログ（どの confidence レベルでどのテンプレートが選択されたか）
+  - LLM 呼び出しのレイテンシ
 
 ### 7.4 マイグレーションと後方互換性
 
@@ -314,10 +393,11 @@ describe('deep_thinking_fiction.system.md', () => {
 
 - **テスト種別**: ユニットテスト（Vitest）
 - **テスト対象**:
-  1. `routing_rules.yaml` の必須キー存在（`llm.default_model`, `output_routing.by_confidence`, `auto_triggers` など）
-  2. `templates/prompts/` 配下の全 `.md` ファイルが空でないこと
-  3. 変数プレースホルダが規約外を使用していないこと（`{{book.*}}` 以外の誤記を検知）
-  4. `deep_thinking_fiction.system.md` に必須構造の文言が含まれること（セクション 0〜7、アンカー密度 6〜10 の要件）
+  1. `routing_rules.yaml` の必須キー存在と構造検証（`llm.default_model`, `output_routing.by_confidence`, `output_routing.confidence_source`, `auto_triggers`, `confidence.type`, `confidence.values` など）
+  2. `routing_rules.yaml` のスキーマ妥当性検証（`stages` 配下の各ステージが `model` と `output` を持つこと、`output_routing.by_confidence` が `high`, `medium`, `low` の3キーを持つこと、`auto_triggers` 配下の各トリガーが `enabled`, `allow`, `deny` を持つこと）
+  3. `templates/prompts/` 配下の全 `.md` ファイルが空でないこと
+  4. 変数プレースホルダが規約外を使用していないこと（`{{book.*}}` 以外の誤記を検知。許可される変数名: `title`, `authors`, `published_date`, `description`, `publisher`）
+  5. `deep_thinking_fiction.system.md` に必須構造の文言が含まれること（セクション 0〜7、アンカー密度 6〜10 の要件）
 - **境界値・エッジケース**: テンプレートが空ファイル、不正な変数名、YAML 構文エラーの検知
 
 ## 9. 実装・リリース計画 (Implementation Plan)
