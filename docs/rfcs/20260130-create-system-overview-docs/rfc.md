@@ -3,7 +3,7 @@
 | 項目 | 内容 |
 | :--- | :--- |
 | **作成者 (Author)** | AI (Claude) |
-| **ステータス** | Draft (起草中) |
+| **ステータス** | Accepted (承認済) |
 | **作成日** | 2026-01-30 |
 | **タグ** | docs, 優先度: 中 |
 | **関連リンク** | CLAUDE.md「System Overview Documents」セクション |
