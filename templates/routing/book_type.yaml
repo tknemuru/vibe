@@ -1,0 +1,10 @@
+types:
+  question:
+    label: "問い型"
+    description: "なぜ／どう考えるが中心。前提を揺さぶる。"
+  dictionary:
+    label: "辞書型"
+    description: "フレーム／スキーム／一覧など道具箱的。使い方の地図が価値。"
+  practice:
+    label: "実践型"
+    description: "手順・ケース・HowTo。行動に落とす。"

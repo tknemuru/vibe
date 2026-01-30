@@ -57,6 +57,9 @@ dre/
 ├── dist/                  # ビルド済み JavaScript
 ├── docs/                  # ドキュメント
 ├── src/                   # TypeScript ソースコード
+├── templates/             # Editorial テンプレート群・ルーティング定義（SoT）
+│   ├── prompts/           # 判定プロンプト群・Editorial テンプレート群
+│   └── routing/           # ルーティング定義・書籍タイプ分類
 ├── test/                  # テストファイル
 ├── .env                   # 環境変数（Git 管理外）
 ├── .env.example           # 環境変数テンプレート
@@ -183,6 +186,57 @@ commands → services → db
 6. プロンプトごとにアクセストークンを発行し、Copy リンクを生成する
 7. ダイジェストメールを送信する（Mail）
 8. 配信記録を `deliveries` + `delivery_items` テーブルに記録する
+
+## Editorial レイヤー（テンプレート・ルーティング）
+
+### 概要
+
+書籍の「興味判定」と「Editorial 編集」を行うレイヤーである。LLM（gpt-4o-mini）を活用し、書籍ごとの関心度判定と読者体験に最適化された編集出力を行う。
+
+テンプレート群とルーティング定義は `templates/` 配下に SoT として配置されている。ルーティングの SoT は `templates/routing/routing_rules.yaml` である。
+
+### データフロー
+
+```
+Books → interest_filter（判定）
+         │
+         ├── interested=false → 配信なし（保存のみ）
+         │
+         └── interested=true
+              │
+              ├── intellectual_pleasure（判定）
+              ├── thinking_fiction（判定）
+              │
+              └── interest_filter の confidence による分岐
+                   ├── high → Editorial-Lite
+                   │          ├── thinking_fiction=true → Deep（自動発火）
+                   │          └── book_type=dictionary → Follow-up（自動発火）
+                   ├── medium → Medium-Lite
+                   └── low → Nano-Lite
+```
+
+### confidence 段階制御
+
+`interest_filter` ステージの `confidence` 出力（`high` / `medium` / `low` の列挙値）により、生成する Editorial の種別を分岐する。
+
+| confidence | 出力テンプレート | 字数目安 |
+|-----------|-----------------|---------|
+| high | Editorial-Lite | 800〜1200字 |
+| medium | Medium-Lite | 600〜900字 |
+| low | Nano-Lite | 200〜350字 |
+
+LLM が期待外の値を返却した場合は `low`（フォールバック）として扱う。
+
+### Deep / Follow-up 自動発火
+
+Deep / Follow-up はデフォルトで自動発火しない。`confidence=high` の場合のみ、以下の条件で自動発火する。
+
+- **Deep（思考型フィクション専用）**: `thinking_fiction=true` かつ `book_type` が `dictionary` でない場合
+- **Follow-up（具体解編）**: `book_type=dictionary` の場合
+
+### 既定 LLM モデル
+
+判定・生成ともに **gpt-4o-mini** を標準採用する。モデル指定は `templates/routing/routing_rules.yaml` で管理する。
 
 ## 重要な設計判断
 

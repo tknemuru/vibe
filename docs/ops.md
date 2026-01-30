@@ -478,3 +478,41 @@ dre job cursor reset ai-books --yes
 ```bash
 dre job cursor reset JOB_NAME --yes
 ```
+
+## Editorial テンプレート管理
+
+### 概要
+
+`templates/` 配下に Editorial レイヤーのテンプレート群とルーティング定義を配置している。
+詳細は `templates/README.md` を参照。
+
+### テンプレート更新手順
+
+1. `templates/prompts/` 配下の対象ファイルを編集する
+2. テストを実行して破壊検知を確認する: `npm test`
+3. レビューを受ける
+
+### 破壊的変更の禁止事項
+
+以下の変更は破壊的変更とみなし、テストまたはレビューで検知する。
+
+1. 必須の差し込み変数（`{{book.title}}` 等）の削除
+2. system プロンプトの役割指示（ペルソナ・出力形式の指定）の削除または根本的変更
+3. 字数目安の大幅な逸脱（定義された範囲の ±50% を超える変更）
+4. `deep_thinking_fiction.system.md` の必須構造（セクション 0〜7 の見出し）の削除
+5. `deep_thinking_fiction.system.md` のアンカー密度要件（1セクションあたり 6〜10 個の具体的参照ポイント）の削除
+
+### 既定モデル変更手順
+
+既定 LLM モデル（現在: gpt-4o-mini）を変更する場合:
+
+1. `templates/routing/routing_rules.yaml` の `llm.default_model` および `stages` 配下の `model` を更新する
+2. `docs/architecture.md` の該当記述を更新する
+3. テスト（`default_model` の値チェック）を更新する
+4. 上記 3 点を同一 PR で同時に更新すること
+
+### モデル廃止時の対応手順
+
+1. OpenAI の非推奨通知（Deprecation Notice）を確認する
+2. 代替モデルの選定基準: コスト、レイテンシ、出力品質の 3 点で評価する
+3. 上記「既定モデル変更手順」に従い `routing_rules.yaml` と docs を同時に更新する
