@@ -1,0 +1,54 @@
+llm:
+  default_model: gpt-4o-mini
+
+confidence:
+  type: enum
+  values: [high, medium, low]
+  description: "LLM に high/medium/low のいずれかの文字列で出力させる"
+  fallback: low  # LLM が期待外の値を返却した場合のデフォルト
+
+stages:
+  interest_filter:
+    model: gpt-4o-mini
+    output: [interested, confidence, reason]
+    note: "reason はルーティングには使用しない（ログ・デバッグ用）"
+  intellectual_pleasure:
+    model: gpt-4o-mini
+    output: [intellectual_pleasure, confidence, reason]
+    note: "reason はルーティングには使用しない（ログ・デバッグ用）"
+  thinking_fiction:
+    model: gpt-4o-mini
+    output: [thinking_fiction, confidence, reason]
+    note: "reason はルーティングには使用しない（ログ・デバッグ用）"
+
+output_routing:
+  confidence_source: interest_filter  # output_routing で参照する confidence は interest_filter ステージの出力値
+  by_confidence:
+    high: editorial_lite
+    medium: medium_lite
+    low: nano_lite
+
+auto_triggers:
+  deep:
+    enabled: true
+    allow:
+      - confidence: high
+        thinking_fiction: true
+    deny:
+      - book_type: dictionary
+  followup:
+    enabled: true
+    allow:
+      - confidence: high
+        book_type: dictionary
+    deny:
+      - confidence: medium
+      - confidence: low
+
+notes:
+  - "medium/low は自動 Deep/Follow-up を禁止（人手トリガは実装スコープ外）"
+  - "辞書型は Deep 禁止、Follow-up が主"
+  - "思考型フィクションは Deep が主"
+  - "confidence は LLM に列挙値（high/medium/low）として出力させる。数値スコアは使用しない"
+  - "LLM が期待外の値を返却した場合は low として扱う（フォールバック）"
+  - "interested=false の書籍の永続化方針（DB への保存有無、配信候補からの除外方法）は将来の実装 RFC で定義する"
